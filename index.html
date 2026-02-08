@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (4AM & AutoScroll)</title>
+<title>나만의 안키 (AutoScroll Fix)</title>
 <style>
     /* 기본 테마 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -161,7 +161,7 @@
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
         <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.37 (Today 4AM & AutoScroll)
+            My Anki v10.38 (AutoScroll Fixed)
         </div>
     </div>
 
@@ -546,7 +546,7 @@
         showCard(); 
     }
 
-    // 🔥 [Feature 2] Toggle Menu with Auto-Scroll
+    // 🔥 [수정됨] 메뉴 열 때 강제 폴더 오픈 & 스크롤
     function toggleMenu() { 
         const sidebar = document.getElementById('sidebar');
         const overlay = document.querySelector('.sidebar-overlay');
@@ -554,13 +554,27 @@
         overlay.classList.toggle('open');
         
         if (isOpen) {
-            // 사이드바 애니메이션(0.3s) 고려, 약간 딜레이 후 스크롤
-            setTimeout(() => {
-                const activeEl = document.querySelector('.tree-deck.active');
-                if (activeEl) {
-                    activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 1. 현재 선택된 덱 찾기
+            const activeEl = document.querySelector('.tree-deck.active');
+            
+            if (activeEl) {
+                // 2. 부모 폴더가 닫혀있다면 강제로 열기
+                let parent = activeEl.parentElement;
+                while (parent && parent.id !== 'sidebar') {
+                    if (parent.classList.contains('tree-children')) {
+                        parent.classList.add('open');
+                    }
+                    parent = parent.parentElement;
                 }
-            }, 100);
+            }
+
+            // 3. 사이드바 애니메이션(0.3s)이 완전히 끝난 후 스크롤 실행 (0.35s)
+            setTimeout(() => {
+                const target = document.querySelector('.tree-deck.active');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 350);
         }
     }
 
@@ -573,19 +587,15 @@
     function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
     function saveEdit() { const newQ = document.getElementById('edit-q').value; const newA = document.getElementById('edit-a').value; const card = activeDeck[currentIndex]; card.q = newQ; card.a = newA; if (location.protocol.startsWith('http')) { const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); edits[card.id] = { q: newQ, a: newA }; localStorage.setItem(STORAGE_KEY_EDITS, JSON.stringify(edits)); } else { saveLibrary(); } closeEditModal(); showCard(); alert("수정 완료"); }
     
-    // 🔥 [Feature 1 Helper] 새벽 4시 기준 오늘 여부 판별
     function isReviewedToday(timestamp) {
         if (!timestamp) return false;
         const now = new Date();
         const reviewDate = new Date(timestamp);
-        
-        // 기준점: 오늘의 새벽 4시 (현재 시간이 4시 이전이면, 어제 새벽 4시가 기준)
         const startOfTodayWindow = new Date(now);
         if (now.getHours() < 4) {
             startOfTodayWindow.setDate(startOfTodayWindow.getDate() - 1);
         }
         startOfTodayWindow.setHours(4, 0, 0, 0);
-
         return reviewDate >= startOfTodayWindow;
     }
 
@@ -622,10 +632,7 @@
         if(!data[id]) data[id] = { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false, lastDate: 0 }; 
         data[id].total++; 
         if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5; 
-        
-        // 🔥 Save current timestamp
         data[id].lastDate = Date.now();
-
         localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); 
         updateStatsUI(data[id]); 
     }
@@ -636,14 +643,8 @@
         const badge = document.getElementById('rate-badge'); 
         if(stats.total === 0) { badge.innerText = "New"; badge.className = "rate-badge"; } 
         else { const rate = Math.round((stats.correct/stats.total)*100); badge.innerText = `${rate}% (${stats.total}회)`; badge.className = `rate-badge ${rate>=80?'high':(rate<50?'low':'')}`; } 
-        
-        // 🔥 Today Badge Update
         const todayBadge = document.getElementById('today-badge');
-        if (isReviewedToday(stats.lastDate)) {
-            todayBadge.style.display = 'inline-block';
-        } else {
-            todayBadge.style.display = 'none';
-        }
+        if (isReviewedToday(stats.lastDate)) { todayBadge.style.display = 'inline-block'; } else { todayBadge.style.display = 'none'; }
     }
     
     function updateIconsUI(stats) { document.getElementById('mem-btn').classList.toggle('active', stats.mem); document.getElementById('cmp-btn').classList.toggle('active', stats.cmp); document.getElementById('fav-btn').classList.toggle('active', stats.fav); document.getElementById('num-btn').classList.toggle('active', stats.num); document.getElementById('date-btn').classList.toggle('active', stats.date); document.getElementById('pen-btn').classList.toggle('active', stats.pen); }
