@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (AutoScroll Recursive Fix)</title>
+<title>나만의 안키 (Instant Scroll Fix)</title>
 <style>
     /* 기본 테마 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -18,7 +18,8 @@
     .menu-btn { font-size: 1.6rem; cursor: pointer; background: none; border: none; padding: 0; color: var(--text); display: flex; align-items: center; }
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
 
-    .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); scroll-behavior: smooth; }
+    /* 🔥 [수정] scroll-behavior 제거 (즉시 이동을 위해) */
+    .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
     .sidebar-overlay.open { display: block; }
@@ -38,7 +39,10 @@
     .tree-children.open { display: block; }
     .folder-title { flex: 1; font-weight: bold; color: #ffd43b; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; }
     .tree-deck { padding: 12px; border-radius: 8px; cursor: pointer; background: var(--input-bg); margin-bottom: 4px; color: var(--text); font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
-    .tree-deck.active { background: #182836; color: #74c0fc; font-weight: bold; border: 1px solid #1c7ed6; }
+    
+    /* 🔥 [수정] Active 상태일 때 테두리 강조 (시각적 확인용) */
+    .tree-deck.active { background: #182836; color: #74c0fc; font-weight: bold; border: 2px solid #1c7ed6; }
+    
     .play-btn { background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; margin-left: 8px; flex-shrink: 0; }
     .del-btn { background: none; border: none; color: var(--text-sub); font-weight: bold; padding: 0 5px; cursor: pointer; font-size: 1rem; }
 
@@ -153,7 +157,7 @@
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
         <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.41 (Recursive Scroll Fix)
+            My Anki v10.42 (Instant Scroll Fix)
         </div>
     </div>
 
@@ -514,7 +518,7 @@
         currentIndex = 0; showCard(); 
     }
 
-    // 🔥 [v10.41 수정] 재귀적 좌표 계산 & 강제 스크롤
+    // 🔥 [v10.42 핵심] Native ScrollIntoView & 강제 개방
     function scrollToActiveDeck() {
         const sidebar = document.getElementById('sidebar');
         const activeEl = sidebar.querySelector('.tree-deck.active');
@@ -530,19 +534,8 @@
                 parent = parent.parentElement;
             }
 
-            // 2. 재귀적으로 절대 오프셋 계산 (offsetParent를 따라가며 합산)
-            let actualTop = 0;
-            let tempEl = activeEl;
-            while (tempEl && tempEl !== sidebar) {
-                actualTop += tempEl.offsetTop;
-                tempEl = tempEl.offsetParent;
-            }
-
-            // 3. 계산된 좌표로 강제 이동 (중앙 정렬 보정 포함)
-            const sidebarVisibleHeight = sidebar.clientHeight;
-            const targetScroll = actualTop - (sidebarVisibleHeight / 2) + (activeEl.clientHeight / 2);
-            
-            sidebar.scrollTop = targetScroll;
+            // 2. 브라우저 내장 함수로 즉시 이동 (behavior: 'auto'는 즉시 이동)
+            activeEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
         }
     }
 
@@ -553,9 +546,9 @@
         overlay.classList.toggle('open');
         
         if (isOpen) {
-            // 애니메이션 초기(0.1초)와 후기(0.4초)에 각각 보정 시도
-            setTimeout(scrollToActiveDeck, 100);
-            setTimeout(scrollToActiveDeck, 400);
+            // 열자마자 바로 한 번, 그리고 렌더링 후 한 번 더
+            scrollToActiveDeck();
+            setTimeout(scrollToActiveDeck, 50);
         }
     }
 
