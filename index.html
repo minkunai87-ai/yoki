@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (Final Fix)</title>
+<title>나만의 안키 (Restored & Filter)</title>
 <style>
     /* 기본 테마 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -42,7 +42,7 @@
     .filter-chip.sort-chip { border-color: #5c5c5c; color: #e0e0e0; background: #333; }
     .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
 
-    /* 사이드바 */
+    /* 사이드바 (이전 버전 스타일 복구) */
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
@@ -165,7 +165,7 @@
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
         <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.49 (Fixed)
+            My Anki v10.46 (Restored & Header Filter)
         </div>
     </div>
 
@@ -320,6 +320,7 @@
         } else { document.getElementById('question-section').innerHTML = "<h3>⚠️ 불러올 덱이 없습니다.</h3>"; }
     }
 
+    // 🔥 [복구됨] TSV 파싱 로직
     function parseAnkiRawData(str) {
         const rows = []; let currentRow = []; let currentCell = ''; let cursor = 0; let inQuote = false;
         while (cursor < str.length) {
@@ -343,6 +344,7 @@
         return rows;
     }
 
+    // 🔥 [복구됨] 텍스트 처리 로직
     function processAnkiText(text, filename, edits) {
         const rows = parseAnkiRawData(text);
         let currentDeck = filename.replace('.txt', '');
@@ -422,29 +424,49 @@
         return wrapper;
     }
 
-    function getProgressKey() {
-        if (!currentDeckName) return null;
-        if (currentFilterMode !== 'default') {
-            return `${currentDeckName}__FILTER_${currentFilterMode}`;
+    // 🔥 [필터 & 정렬 통합 로직]
+    function applyFilterAndSort() {
+        if(!currentDeckName) return;
+        const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        let filtered = [...originalDeck];
+
+        // 1. 필터
+        if(currentFilterMode !== 'default') {
+            filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
         }
-        return currentDeckName;
+
+        // 2. 정렬
+        if(currentSortMode === 'wrong') {
+            filtered.sort((a,b) => {
+                const sA = stats[a.id] || {correct:0, total:0}; 
+                const sB = stats[b.id] || {correct:0, total:0}; 
+                const rA = sA.total===0 ? 1 : (sA.correct / sA.total); 
+                const rB = sB.total===0 ? 1 : (sB.correct / sB.total); 
+                return rA - rB; // 정답률 낮은 순
+            });
+        }
+
+        activeDeck = filtered;
+        currentIndex = loadProgress(); // 🔥 필터/정렬 상태별 위치 로드
+        if(currentIndex >= activeDeck.length) currentIndex = 0;
+        showCard();
     }
 
-    function saveCurrentProgress() { 
-        const key = getProgressKey();
-        if (!key) return;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        progress[key] = currentIndex;
-        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress)); 
+    function setFilterMode(mode) {
+        currentFilterMode = mode;
+        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
+        applyFilterAndSort();
     }
 
-    function loadProgress() {
-        const key = getProgressKey();
-        if (!key) return 0;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        return progress[key] || 0;
+    function setSortMode(mode) {
+        currentSortMode = mode;
+        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
+        applyFilterAndSort();
     }
 
+    function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
+
+    // 🔥 [복구됨] 덱 트리 렌더링 (폴더 구조)
     function renderDeckTree() {
         const list = document.getElementById('deck-list-ui'); list.innerHTML = '';
         const names = Object.keys(library).sort();
@@ -470,18 +492,11 @@
                     const countInfo = item._isLeaf ? `(${library[item._fullPath].length})` : '';
                     titleArea.innerHTML = `<span class="folder-icon">📂</span> ${item._name} <small style="opacity:0.6; font-weight:normal;">${countInfo}</small>`;
                     const playBtn = document.createElement('button'); playBtn.className = 'play-btn'; playBtn.innerText = '▶ 전체';
-                    
-                    // 🔥 [Fix] 상위 덱 전체 풀기 버튼 로직
                     playBtn.onclick = (e) => { e.stopPropagation(); selectDeckGroup(item._fullPath + '__'); };
-                    
                     header.appendChild(titleArea); header.appendChild(playBtn); li.appendChild(header);
                     const childContainer = document.createElement('ul'); childContainer.className = 'tree-children deck-list';
                     header.onclick = () => { childContainer.classList.toggle('open'); };
-                    
-                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { 
-                        childContainer.classList.add('open'); 
-                    }
-                    
+                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { childContainer.classList.add('open'); }
                     li.appendChild(childContainer); container.appendChild(li);
                     createTreeDOM(item._children, childContainer);
                 } else { 
@@ -500,34 +515,19 @@
         createTreeDOM(tree, list);
     }
 
-    // 🔥 [Fix] 그룹 덱 선택 로직 강화
     function selectDeckGroup(prefix) {
         let mergedCards = [];
-        // prefix는 "Theme 40__" 처럼 들어옴.
-        const exactName = prefix.replace(/__$/, ''); 
-        
-        Object.keys(library).forEach(key => { 
-            // 1. 하위 덱 (prefix로 시작)
-            // 2. 정확히 그 덱 (prefix에서 __ 뺀 것과 일치)
-            if (key.startsWith(prefix) || key === exactName) { 
-                mergedCards = mergedCards.concat(library[key]); 
-            } 
-        });
-        
-        if (mergedCards.length === 0) { 
-            alert("하위 덱이 없습니다."); 
-            return; 
-        }
-        
-        let displayName = exactName.split('__').pop();
-        currentDeckName = exactName; // 그룹 선택 시에는 해당 그룹명을 현재 덱으로
+        Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) { mergedCards = mergedCards.concat(library[key]); } });
+        if (mergedCards.length === 0) { const exactKey = prefix.replace(/__$/, ''); if(library[exactKey]) { selectDeck(exactKey); return; } alert("하위 덱이 없습니다."); return; }
+        let displayName = prefix.replace(/__$/, '').split('__').pop();
+        currentDeckName = prefix.replace(/__$/, ''); 
         originalDeck = mergedCards; 
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         document.getElementById('deck-title').innerText = `📂 ${displayName} (통합)`;
         
+        // 필터/정렬 상태 유지하며 적용
         applyFilterAndSort(); 
-        
-        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
+        toggleMenu(); // 메뉴 닫기
     }
 
     function selectDeck(name) { 
@@ -538,55 +538,14 @@
         const displayName = name.split('__').pop(); 
         document.getElementById('deck-title').innerText = `📄 ${displayName}`; 
         
+        // 필터/정렬 상태 유지하며 적용
         applyFilterAndSort(); 
-        
-        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
+        toggleMenu(); // 메뉴 닫기
     }
-
-    function applyFilterAndSort() {
-        if(!currentDeckName) return;
-        const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        let filtered = [...originalDeck];
-
-        if(currentFilterMode !== 'default') {
-            filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
-        }
-
-        if(currentSortMode === 'wrong') {
-            filtered.sort((a,b) => {
-                const sA = stats[a.id] || {correct:0, total:0}; 
-                const sB = stats[b.id] || {correct:0, total:0}; 
-                const rA = sA.total===0 ? 1 : (sA.correct / sA.total); 
-                const rB = sB.total===0 ? 1 : (sB.correct / sB.total); 
-                return rA - rB; 
-            });
-        }
-
-        activeDeck = filtered;
-        currentIndex = loadProgress(); 
-        if(currentIndex >= activeDeck.length) currentIndex = 0;
-        
-        renderDeckTree(); 
-        showCard();
-    }
-
-    function setFilterMode(mode) {
-        currentFilterMode = mode;
-        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
-        applyFilterAndSort();
-    }
-
-    function setSortMode(mode) {
-        currentSortMode = mode;
-        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
-        applyFilterAndSort();
-    }
-
-    function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
     function filterCards() { 
         const rawQuery = document.getElementById('search-input').value.toLowerCase();
-        if(!rawQuery) { applyFilterAndSort(); return; } 
+        if(!rawQuery) { applyFilterAndSort(); return; } // 검색 없으면 필터/정렬 적용
         activeDeck = originalDeck.filter(card => 
             card.q.toLowerCase().includes(rawQuery) || 
             card.a.toLowerCase().includes(rawQuery) ||
@@ -596,24 +555,37 @@
         showCard(); 
     }
 
-    // 🔥 [Fix] 강력한 스크롤 & 폴더 강제 개방
-    function focusActiveDeck() {
+    // 🔥 [진행상황 저장 키: 덱 + 필터 + 정렬]
+    function getProgressKey() {
+        if (!currentDeckName) return null;
+        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
+    }
+
+    function saveCurrentProgress() { 
+        const key = getProgressKey();
+        if (!key) return;
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        progress[key] = currentIndex;
+        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress)); 
+    }
+
+    function loadProgress() {
+        const key = getProgressKey();
+        if (!key) return 0;
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        return progress[key] || 0;
+    }
+
+    function scrollToActiveDeck() {
         const sidebar = document.getElementById('sidebar');
         const activeEl = sidebar.querySelector('.tree-deck.active');
-        
         if (activeEl) {
-            // 1. 모든 부모 폴더 강제 열기 (DOM 트리 거슬러 올라가기)
             let parent = activeEl.parentElement;
             while (parent && parent !== sidebar) {
-                if (parent.classList.contains('tree-children')) {
-                    parent.classList.add('open'); 
-                    parent.style.display = 'block'; // 시각적 강제
-                }
+                if (parent.classList.contains('tree-children')) { parent.classList.add('open'); parent.style.display = 'block'; }
                 parent = parent.parentElement;
             }
-
-            // 2. 스크롤 즉시 이동
-            activeEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+            activeEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
         }
     }
 
@@ -622,13 +594,7 @@
         const overlay = document.querySelector('.sidebar-overlay');
         const isOpen = sidebar.classList.toggle('open'); 
         overlay.classList.toggle('open');
-        
-        if (isOpen) {
-            // 열자마자 바로 포커싱
-            focusActiveDeck();
-            // 약간의 딜레이 후 재확인 (렌더링 이슈 방지)
-            setTimeout(focusActiveDeck, 50);
-        }
+        if (isOpen) { scrollToActiveDeck(); setTimeout(scrollToActiveDeck, 50); }
     }
 
     function handleFileUpload(input) { const files = input.files; if(files.length === 0) return; let processedCount = 0; const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); Array.from(files).forEach(file => { const reader = new FileReader(); reader.onload = (e) => { const text = e.target.result; processAnkiText(text, file.name, edits); processedCount++; if (processedCount === files.length) { saveLibrary(); renderDeckTree(); if (!currentDeckName) selectDeck(Object.keys(library)[0]); alert(`총 ${files.length}개 파일 처리됨`); toggleMenu(); } }; reader.readAsText(file, 'UTF-8'); }); input.value = ''; }
@@ -638,15 +604,69 @@
     function openEditModal(e) { e.stopPropagation(); if(!activeDeck || activeDeck.length === 0) return; const card = activeDeck[currentIndex]; document.getElementById('edit-q').value = card.q; document.getElementById('edit-a').value = card.a; document.getElementById('edit-modal').style.display = 'flex'; }
     function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
     function saveEdit() { const newQ = document.getElementById('edit-q').value; const newA = document.getElementById('edit-a').value; const card = activeDeck[currentIndex]; card.q = newQ; card.a = newA; if (location.protocol.startsWith('http')) { const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); edits[card.id] = { q: newQ, a: newA }; localStorage.setItem(STORAGE_KEY_EDITS, JSON.stringify(edits)); } else { saveLibrary(); } closeEditModal(); showCard(); alert("수정 완료"); }
-    function isReviewedToday(timestamp) { if (!timestamp) return false; const now = new Date(); const reviewDate = new Date(timestamp); const startOfTodayWindow = new Date(now); if (now.getHours() < 4) { startOfTodayWindow.setDate(startOfTodayWindow.getDate() - 1); } startOfTodayWindow.setHours(4, 0, 0, 0); return reviewDate >= startOfTodayWindow; }
-    function showCard() { if (!activeDeck || activeDeck.length === 0) { document.getElementById('question-section').innerHTML = "<h3 style='color:var(--text-sub)'>항목이 없습니다.</h3>"; document.getElementById('card-info').style.display='none'; return; } if(currentIndex >= activeDeck.length) currentIndex = 0; isRevealed = false; const card = activeDeck[currentIndex]; const stats = getStats(card.id); document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`; document.getElementById('card-info').style.display='flex'; updateStatsUI(stats); updateIconsUI(stats); const qSection = document.getElementById('question-section'); qSection.innerHTML = ''; qSection.appendChild(createDOM(card.q, false)); const aSection = document.getElementById('answer-section'); aSection.innerHTML = ''; aSection.appendChild(createDOM(card.a, true, card.q)); aSection.style.display = 'none'; document.getElementById('divider').style.display = 'none'; document.getElementById('click-guide').style.display = 'block'; document.getElementById('nav-area').style.display = 'flex'; document.getElementById('grade-area').style.display = 'none'; document.getElementById('scroll-area').scrollTop = 0; }
+    
+    function getVirtualDate(timestamp) {
+        if (!timestamp) return null;
+        const date = new Date(timestamp);
+        if (date.getHours() < 4) { date.setDate(date.getDate() - 1); }
+        date.setHours(0, 0, 0, 0);
+        return date;
+    }
+
+    function showCard() { 
+        if (!activeDeck || activeDeck.length === 0) { document.getElementById('question-section').innerHTML = "<h3 style='color:var(--text-sub)'>항목이 없습니다.</h3>"; document.getElementById('card-info').style.display='none'; return; } 
+        if(currentIndex >= activeDeck.length) currentIndex = 0; 
+        isRevealed = false; 
+        const card = activeDeck[currentIndex]; 
+        const stats = getStats(card.id); 
+        document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`; 
+        document.getElementById('card-info').style.display='flex'; 
+        updateStatsUI(stats); 
+        updateIconsUI(stats); 
+        const qSection = document.getElementById('question-section'); qSection.innerHTML = ''; 
+        qSection.appendChild(createDOM(card.q, false)); 
+        const aSection = document.getElementById('answer-section'); aSection.innerHTML = ''; 
+        aSection.appendChild(createDOM(card.a, true, card.q)); 
+        aSection.style.display = 'none'; document.getElementById('divider').style.display = 'none'; document.getElementById('click-guide').style.display = 'block'; document.getElementById('nav-area').style.display = 'flex'; document.getElementById('grade-area').style.display = 'none'; document.getElementById('scroll-area').scrollTop = 0; 
+    }
+    
     function revealAnswer() { isRevealed = true; document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block'; document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex'; setTimeout(() => { document.getElementById('answer-section').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); }
     function moveCard(delta) { let nextIdx = currentIndex + delta; if(nextIdx >= 0 && nextIdx < activeDeck.length) { currentIndex = nextIdx; saveCurrentProgress(); showCard(); } }
     function grade(score) { saveStats(activeDeck[currentIndex].id, score); if (currentIndex < activeDeck.length - 1) { currentIndex++; saveCurrentProgress(); showCard(); } else { alert("끝!"); currentIndex=0; saveCurrentProgress(); showCard(); } }
     function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false, lastDate: 0 }; }
     function saveStats(id, score) { const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false, lastDate: 0 }; data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5; data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateStatsUI(data[id]); }
     function toggleTag(e, type) { e.stopPropagation(); const card = activeDeck[currentIndex]; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[card.id]) data[card.id] = { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false }; data[card.id][type] = !data[card.id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[card.id]); }
-    function updateStatsUI(stats) { const badge = document.getElementById('rate-badge'); if(stats.total === 0) { badge.innerText = "New"; badge.className = "rate-badge"; } else { const rate = Math.round((stats.correct/stats.total)*100); badge.innerText = `${rate}% (${stats.total}회)`; badge.className = `rate-badge ${rate>=80?'high':(rate<50?'low':'')}`; } const todayBadge = document.getElementById('date-badge'); if (stats.lastDate) { const diff = Math.floor((getVirtualDate(Date.now()) - getVirtualDate(stats.lastDate)) / 86400000); todayBadge.style.display = 'inline-block'; if (diff === 0) { todayBadge.innerText = "✅ 오늘"; todayBadge.className = 'date-badge badge-today'; } else if (diff === 1) { todayBadge.innerText = "⏮️ 1일 전"; todayBadge.className = 'date-badge badge-1d'; } else { todayBadge.innerText = `📅 ${diff}일 전`; todayBadge.className = 'date-badge badge-old'; } } else { todayBadge.style.display = 'none'; } }
+    
+    function updateStatsUI(stats) { 
+        const badge = document.getElementById('rate-badge'); 
+        if(stats.total === 0) { badge.innerText = "New"; badge.className = "rate-badge"; } 
+        else { const rate = Math.round((stats.correct/stats.total)*100); badge.innerText = `${rate}% (${stats.total}회)`; badge.className = `rate-badge ${rate>=80?'high':(rate<50?'low':'')}`; } 
+        
+        const dateBadge = document.getElementById('date-badge');
+        if (!stats.lastDate) {
+            dateBadge.style.display = 'none';
+        } else {
+            const todayVirtual = getVirtualDate(Date.now());
+            const reviewVirtual = getVirtualDate(stats.lastDate);
+            const diffTime = todayVirtual - reviewVirtual;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+            dateBadge.style.display = 'inline-block';
+            dateBadge.className = 'date-badge'; 
+
+            if (diffDays === 0) {
+                dateBadge.innerText = "✅ 오늘";
+                dateBadge.classList.add('badge-today');
+            } else if (diffDays === 1) {
+                dateBadge.innerText = "⏮️ 1일 전";
+                dateBadge.classList.add('badge-1d');
+            } else {
+                dateBadge.innerText = `📅 ${diffDays}일 전`;
+                dateBadge.classList.add('badge-old');
+            }
+        }
+    }
+    
     function updateIconsUI(stats) { document.getElementById('mem-btn').classList.toggle('active', stats.mem); document.getElementById('cmp-btn').classList.toggle('active', stats.cmp); document.getElementById('fav-btn').classList.toggle('active', stats.fav); document.getElementById('num-btn').classList.toggle('active', stats.num); document.getElementById('date-btn').classList.toggle('active', stats.date); document.getElementById('pen-btn').classList.toggle('active', stats.pen); }
     function exportData() { const data = { stats: localStorage.getItem(STORAGE_KEY_STATS), edits: localStorage.getItem(STORAGE_KEY_EDITS), progress: localStorage.getItem(STORAGE_KEY_PROGRESS), lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK), timestamp: new Date().toLocaleString() }; const blob = new Blob([JSON.stringify(data)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,""); a.download = `anki_backup_${dateStr}.json`; a.click(); URL.revokeObjectURL(url); }
     function importData(input) { const file = input.files[0]; if (!file) return; if(!confirm("⚠️ 현재 기기의 기록을 덮어씌웁니다.\n계속하시겠습니까?")) { input.value = ''; return; } const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if(data.stats) localStorage.setItem(STORAGE_KEY_STATS, data.stats); if(data.edits) localStorage.setItem(STORAGE_KEY_EDITS, data.edits); if(data.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, data.progress); if(data.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, data.lastDeck); alert("✅ 복구 완료!\n페이지를 새로고침합니다."); location.reload(); } catch (err) { alert("❌ 잘못된 백업 파일입니다."); } }; reader.readAsText(file); }
