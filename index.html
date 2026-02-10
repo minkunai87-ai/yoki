@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (Absolute Scroll Fix)</title>
+<title>나만의 안키 (Final Fix)</title>
 <style>
-    /* 기본 테마 유지 */
+    /* 기본 테마 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
@@ -72,7 +72,6 @@
     .backup-btn { background: #343a40; color: white; border: none; text-align: center; }
     .restore-btn { background: #495057; color: white; border: none; text-align: center; }
     .refresh-btn { background: #212529; color: var(--text-sub); border: 1px solid var(--border); text-align: center; margin-top: 10px; }
-    .sort-btn.active-filter { border: 2px solid var(--primary); background: #182836; color: var(--primary); }
 
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
     .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; box-shadow: none; border: none; display: flex; flex-direction: column; position: relative; overflow: hidden; }
@@ -90,7 +89,6 @@
     .icon-wrapper { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
     .icon-row { display: flex; gap: 12px; }
     .icon-btn { font-size: 1.4rem; cursor: pointer; background: none; border: none; padding: 0; line-height: 1; color: var(--text-sub); transition: 0.2s; opacity: 0.4; filter: grayscale(100%); }
-    .icon-btn:hover { opacity: 0.8; }
     .icon-btn.active { opacity: 1; filter: grayscale(0%); transform: scale(1.1); }
     .mem-btn.active { color: #ff8787; } .cmp-btn.active { color: #74c0fc; } .fav-btn.active { color: #ffd43b; }
     .num-btn.active { color: #66d9e8; } .date-btn.active { color: #b197fc; } .pen-btn.active { color: #ff6b6b; }
@@ -167,7 +165,7 @@
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
         <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.48 (Absolute Scroll Fix)
+            My Anki v10.49 (Fixed)
         </div>
     </div>
 
@@ -472,11 +470,18 @@
                     const countInfo = item._isLeaf ? `(${library[item._fullPath].length})` : '';
                     titleArea.innerHTML = `<span class="folder-icon">📂</span> ${item._name} <small style="opacity:0.6; font-weight:normal;">${countInfo}</small>`;
                     const playBtn = document.createElement('button'); playBtn.className = 'play-btn'; playBtn.innerText = '▶ 전체';
+                    
+                    // 🔥 [Fix] 상위 덱 전체 풀기 버튼 로직
                     playBtn.onclick = (e) => { e.stopPropagation(); selectDeckGroup(item._fullPath + '__'); };
+                    
                     header.appendChild(titleArea); header.appendChild(playBtn); li.appendChild(header);
                     const childContainer = document.createElement('ul'); childContainer.className = 'tree-children deck-list';
                     header.onclick = () => { childContainer.classList.toggle('open'); };
-                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { childContainer.classList.add('open'); }
+                    
+                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { 
+                        childContainer.classList.add('open'); 
+                    }
+                    
                     li.appendChild(childContainer); container.appendChild(li);
                     createTreeDOM(item._children, childContainer);
                 } else { 
@@ -495,65 +500,47 @@
         createTreeDOM(tree, list);
     }
 
+    // 🔥 [Fix] 그룹 덱 선택 로직 강화
     function selectDeckGroup(prefix) {
         let mergedCards = [];
-        Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) { mergedCards = mergedCards.concat(library[key]); } });
-        if (mergedCards.length === 0) { const exactKey = prefix.replace(/__$/, ''); if(library[exactKey]) { selectDeck(exactKey); return; } alert("하위 덱이 없습니다."); return; }
-        let displayName = prefix.replace(/__$/, '').split('__').pop();
-        currentDeckName = prefix.replace(/__$/, ''); originalDeck = mergedCards; localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
+        // prefix는 "Theme 40__" 처럼 들어옴.
+        const exactName = prefix.replace(/__$/, ''); 
+        
+        Object.keys(library).forEach(key => { 
+            // 1. 하위 덱 (prefix로 시작)
+            // 2. 정확히 그 덱 (prefix에서 __ 뺀 것과 일치)
+            if (key.startsWith(prefix) || key === exactName) { 
+                mergedCards = mergedCards.concat(library[key]); 
+            } 
+        });
+        
+        if (mergedCards.length === 0) { 
+            alert("하위 덱이 없습니다."); 
+            return; 
+        }
+        
+        let displayName = exactName.split('__').pop();
+        currentDeckName = exactName; // 그룹 선택 시에는 해당 그룹명을 현재 덱으로
+        originalDeck = mergedCards; 
+        localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         document.getElementById('deck-title').innerText = `📂 ${displayName} (통합)`;
-        sortCards('default'); 
+        
+        applyFilterAndSort(); 
+        
+        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
     }
 
     function selectDeck(name) { 
         if(!library[name]) return; 
-        currentDeckName = name; originalDeck = library[name]; localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
-        const displayName = name.split('__').pop(); document.getElementById('deck-title').innerText = `📄 ${displayName}`; 
-        sortCards('default'); 
-    }
-
-    function sortCards(type) { 
-        if(!currentDeckName) return; 
-        currentFilterMode = type; 
-        document.querySelectorAll('.filter-chip').forEach(btn => btn.classList.remove('active'));
-        const activeBtn = document.getElementById(`filter-${type}`) || document.getElementById(`sort-${type}`);
-        if(activeBtn) activeBtn.classList.add('active');
-
-        const allStats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        let newDeck = [...originalDeck]; 
-        if(type === 'rate_asc') { 
-            newDeck.sort((a,b) => { 
-                const sA = allStats[a.id] || {correct:0, total:0}; const sB = allStats[b.id] || {correct:0, total:0}; 
-                const rA = sA.total===0?100:(sA.correct/sA.total); const rB = sB.total===0?100:(sB.correct/sB.total); 
-                return rA - rB; 
-            }); 
-        } else if (type === 'default') { } else { newDeck = newDeck.filter(c => (allStats[c.id] || {})[type]); } 
+        currentDeckName = name; 
+        originalDeck = library[name]; 
+        localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
+        const displayName = name.split('__').pop(); 
+        document.getElementById('deck-title').innerText = `📄 ${displayName}`; 
         
-        if(newDeck.length === 0 && type !== 'default') { alert("해당하는 카드가 없습니다. 기본 보기로 돌아갑니다."); sortCards('default'); return; }
-        activeDeck = newDeck; currentIndex = loadProgress();
-        if(currentIndex >= activeDeck.length) currentIndex = 0;
-        document.getElementById('search-input').value = ''; isRevealed = false; 
-        renderDeckTree(); showCard(); 
-        document.getElementById('sidebar').classList.remove('open'); document.querySelector('.sidebar-overlay').classList.remove('open'); 
-    }
-
-    function filterCards() { 
-        const rawQuery = document.getElementById('search-input').value.toLowerCase();
-        if(!rawQuery) { sortCards(currentFilterMode); return; } 
-        activeDeck = originalDeck.filter(card => card.q.toLowerCase().includes(rawQuery) || card.a.toLowerCase().includes(rawQuery) || (card.hiddenText && card.hiddenText.toLowerCase().includes(rawQuery)));
-        currentIndex = 0; showCard(); 
-    }
-
-    function setFilterMode(mode) {
-        currentFilterMode = mode;
-        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
-        applyFilterAndSort();
-    }
-
-    function setSortMode(mode) {
-        currentSortMode = mode;
-        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
-        applyFilterAndSort();
+        applyFilterAndSort(); 
+        
+        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
     }
 
     function applyFilterAndSort() {
@@ -583,36 +570,50 @@
         showCard();
     }
 
+    function setFilterMode(mode) {
+        currentFilterMode = mode;
+        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
+        applyFilterAndSort();
+    }
+
+    function setSortMode(mode) {
+        currentSortMode = mode;
+        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
+        applyFilterAndSort();
+    }
+
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
-    // 🔥 [v10.48 핵심] 강력한 좌표 계산 스크롤
-    function scrollToActiveDeck() {
+    function filterCards() { 
+        const rawQuery = document.getElementById('search-input').value.toLowerCase();
+        if(!rawQuery) { applyFilterAndSort(); return; } 
+        activeDeck = originalDeck.filter(card => 
+            card.q.toLowerCase().includes(rawQuery) || 
+            card.a.toLowerCase().includes(rawQuery) ||
+            (card.hiddenText && card.hiddenText.toLowerCase().includes(rawQuery))
+        );
+        currentIndex = 0; 
+        showCard(); 
+    }
+
+    // 🔥 [Fix] 강력한 스크롤 & 폴더 강제 개방
+    function focusActiveDeck() {
         const sidebar = document.getElementById('sidebar');
         const activeEl = sidebar.querySelector('.tree-deck.active');
         
         if (activeEl) {
-            // 1. 강제 개방
+            // 1. 모든 부모 폴더 강제 열기 (DOM 트리 거슬러 올라가기)
             let parent = activeEl.parentElement;
             while (parent && parent !== sidebar) {
                 if (parent.classList.contains('tree-children')) {
                     parent.classList.add('open'); 
-                    parent.style.display = 'block'; 
+                    parent.style.display = 'block'; // 시각적 강제
                 }
                 parent = parent.parentElement;
             }
 
-            // 2. 절대 좌표 계산
-            const sidebarRect = sidebar.getBoundingClientRect();
-            const elementRect = activeEl.getBoundingClientRect();
-            
-            // 현재 스크롤 위치를 고려한 요소의 절대 Top 위치 계산
-            const absoluteElementTop = elementRect.top - sidebarRect.top + sidebar.scrollTop;
-            
-            // 중앙 정렬을 위한 타겟 스크롤 값
-            const targetScroll = absoluteElementTop - (sidebar.clientHeight / 2) + (activeEl.clientHeight / 2);
-            
-            // 3. 즉시 이동
-            sidebar.scrollTo({ top: targetScroll, behavior: 'auto' });
+            // 2. 스크롤 즉시 이동
+            activeEl.scrollIntoView({ block: 'center', behavior: 'auto' });
         }
     }
 
@@ -623,10 +624,10 @@
         overlay.classList.toggle('open');
         
         if (isOpen) {
-            // 🔥 타이밍 이슈 해결을 위한 10연발 사격
-            for(let i=0; i<=500; i+=50) {
-                setTimeout(scrollToActiveDeck, i);
-            }
+            // 열자마자 바로 포커싱
+            focusActiveDeck();
+            // 약간의 딜레이 후 재확인 (렌더링 이슈 방지)
+            setTimeout(focusActiveDeck, 50);
         }
     }
 
