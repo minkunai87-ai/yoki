@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (Restored & Filter)</title>
+<title>나만의 안키 (Auto Focus Fix)</title>
 <style>
-    /* 기본 테마 */
+    /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
@@ -42,7 +42,7 @@
     .filter-chip.sort-chip { border-color: #5c5c5c; color: #e0e0e0; background: #333; }
     .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
 
-    /* 사이드바 (이전 버전 스타일 복구) */
+    /* 사이드바 */
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
@@ -165,7 +165,7 @@
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
         <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.46 (Restored & Header Filter)
+            My Anki v10.47 (Focus Fix)
         </div>
     </div>
 
@@ -320,7 +320,6 @@
         } else { document.getElementById('question-section').innerHTML = "<h3>⚠️ 불러올 덱이 없습니다.</h3>"; }
     }
 
-    // 🔥 [복구됨] TSV 파싱 로직
     function parseAnkiRawData(str) {
         const rows = []; let currentRow = []; let currentCell = ''; let cursor = 0; let inQuote = false;
         while (cursor < str.length) {
@@ -344,7 +343,6 @@
         return rows;
     }
 
-    // 🔥 [복구됨] 텍스트 처리 로직
     function processAnkiText(text, filename, edits) {
         const rows = parseAnkiRawData(text);
         let currentDeck = filename.replace('.txt', '');
@@ -424,49 +422,26 @@
         return wrapper;
     }
 
-    // 🔥 [필터 & 정렬 통합 로직]
-    function applyFilterAndSort() {
-        if(!currentDeckName) return;
-        const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        let filtered = [...originalDeck];
-
-        // 1. 필터
-        if(currentFilterMode !== 'default') {
-            filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
-        }
-
-        // 2. 정렬
-        if(currentSortMode === 'wrong') {
-            filtered.sort((a,b) => {
-                const sA = stats[a.id] || {correct:0, total:0}; 
-                const sB = stats[b.id] || {correct:0, total:0}; 
-                const rA = sA.total===0 ? 1 : (sA.correct / sA.total); 
-                const rB = sB.total===0 ? 1 : (sB.correct / sB.total); 
-                return rA - rB; // 정답률 낮은 순
-            });
-        }
-
-        activeDeck = filtered;
-        currentIndex = loadProgress(); // 🔥 필터/정렬 상태별 위치 로드
-        if(currentIndex >= activeDeck.length) currentIndex = 0;
-        showCard();
+    function getProgressKey() {
+        if (!currentDeckName) return null;
+        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
     }
 
-    function setFilterMode(mode) {
-        currentFilterMode = mode;
-        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
-        applyFilterAndSort();
+    function saveCurrentProgress() { 
+        const key = getProgressKey();
+        if (!key) return;
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        progress[key] = currentIndex;
+        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress)); 
     }
 
-    function setSortMode(mode) {
-        currentSortMode = mode;
-        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
-        applyFilterAndSort();
+    function loadProgress() {
+        const key = getProgressKey();
+        if (!key) return 0;
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        return progress[key] || 0;
     }
 
-    function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
-
-    // 🔥 [복구됨] 덱 트리 렌더링 (폴더 구조)
     function renderDeckTree() {
         const list = document.getElementById('deck-list-ui'); list.innerHTML = '';
         const names = Object.keys(library).sort();
@@ -496,7 +471,12 @@
                     header.appendChild(titleArea); header.appendChild(playBtn); li.appendChild(header);
                     const childContainer = document.createElement('ul'); childContainer.className = 'tree-children deck-list';
                     header.onclick = () => { childContainer.classList.toggle('open'); };
-                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { childContainer.classList.add('open'); }
+                    
+                    // 🔥 [Fix] 초기 로딩 시 폴더 자동 펼침
+                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { 
+                        childContainer.classList.add('open'); 
+                    }
+                    
                     li.appendChild(childContainer); container.appendChild(li);
                     createTreeDOM(item._children, childContainer);
                 } else { 
@@ -525,9 +505,10 @@
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         document.getElementById('deck-title').innerText = `📂 ${displayName} (통합)`;
         
-        // 필터/정렬 상태 유지하며 적용
         applyFilterAndSort(); 
-        toggleMenu(); // 메뉴 닫기
+        
+        // 닫혀있으면 열기 (메뉴)
+        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
     }
 
     function selectDeck(name) { 
@@ -538,14 +519,57 @@
         const displayName = name.split('__').pop(); 
         document.getElementById('deck-title').innerText = `📄 ${displayName}`; 
         
-        // 필터/정렬 상태 유지하며 적용
         applyFilterAndSort(); 
-        toggleMenu(); // 메뉴 닫기
+        
+        // 닫혀있으면 열기 (메뉴)
+        if(document.getElementById('sidebar').classList.contains('open')) toggleMenu();
     }
+
+    // 🔥 [필터 & 정렬]
+    function applyFilterAndSort() {
+        if(!currentDeckName) return;
+        const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        let filtered = [...originalDeck];
+
+        if(currentFilterMode !== 'default') {
+            filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
+        }
+
+        if(currentSortMode === 'wrong') {
+            filtered.sort((a,b) => {
+                const sA = stats[a.id] || {correct:0, total:0}; 
+                const sB = stats[b.id] || {correct:0, total:0}; 
+                const rA = sA.total===0 ? 1 : (sA.correct / sA.total); 
+                const rB = sB.total===0 ? 1 : (sB.correct / sB.total); 
+                return rA - rB; 
+            });
+        }
+
+        activeDeck = filtered;
+        currentIndex = loadProgress(); 
+        if(currentIndex >= activeDeck.length) currentIndex = 0;
+        
+        renderDeckTree(); // 덱 트리 업데이트 (active 표시용)
+        showCard();
+    }
+
+    function setFilterMode(mode) {
+        currentFilterMode = mode;
+        document.querySelectorAll('.filter-chip:not(.sort-chip)').forEach(c => c.classList.toggle('active', c.id === `filter-${mode}`));
+        applyFilterAndSort();
+    }
+
+    function setSortMode(mode) {
+        currentSortMode = mode;
+        document.querySelectorAll('.sort-chip').forEach(c => c.classList.toggle('active', c.id === `sort-${mode}`));
+        applyFilterAndSort();
+    }
+
+    function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
     function filterCards() { 
         const rawQuery = document.getElementById('search-input').value.toLowerCase();
-        if(!rawQuery) { applyFilterAndSort(); return; } // 검색 없으면 필터/정렬 적용
+        if(!rawQuery) { applyFilterAndSort(); return; } 
         activeDeck = originalDeck.filter(card => 
             card.q.toLowerCase().includes(rawQuery) || 
             card.a.toLowerCase().includes(rawQuery) ||
@@ -555,34 +579,18 @@
         showCard(); 
     }
 
-    // 🔥 [진행상황 저장 키: 덱 + 필터 + 정렬]
-    function getProgressKey() {
-        if (!currentDeckName) return null;
-        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
-    }
-
-    function saveCurrentProgress() { 
-        const key = getProgressKey();
-        if (!key) return;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        progress[key] = currentIndex;
-        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress)); 
-    }
-
-    function loadProgress() {
-        const key = getProgressKey();
-        if (!key) return 0;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        return progress[key] || 0;
-    }
-
+    // 🔥 [Fix] 자동 스크롤 기능
     function scrollToActiveDeck() {
         const sidebar = document.getElementById('sidebar');
         const activeEl = sidebar.querySelector('.tree-deck.active');
+        
         if (activeEl) {
             let parent = activeEl.parentElement;
             while (parent && parent !== sidebar) {
-                if (parent.classList.contains('tree-children')) { parent.classList.add('open'); parent.style.display = 'block'; }
+                if (parent.classList.contains('tree-children')) {
+                    parent.classList.add('open'); 
+                    parent.style.display = 'block'; 
+                }
                 parent = parent.parentElement;
             }
             activeEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
@@ -594,7 +602,11 @@
         const overlay = document.querySelector('.sidebar-overlay');
         const isOpen = sidebar.classList.toggle('open'); 
         overlay.classList.toggle('open');
-        if (isOpen) { scrollToActiveDeck(); setTimeout(scrollToActiveDeck, 50); }
+        
+        if (isOpen) {
+            scrollToActiveDeck();
+            setTimeout(scrollToActiveDeck, 50);
+        }
     }
 
     function handleFileUpload(input) { const files = input.files; if(files.length === 0) return; let processedCount = 0; const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); Array.from(files).forEach(file => { const reader = new FileReader(); reader.onload = (e) => { const text = e.target.result; processAnkiText(text, file.name, edits); processedCount++; if (processedCount === files.length) { saveLibrary(); renderDeckTree(); if (!currentDeckName) selectDeck(Object.keys(library)[0]); alert(`총 ${files.length}개 파일 처리됨`); toggleMenu(); } }; reader.readAsText(file, 'UTF-8'); }); input.value = ''; }
@@ -656,13 +668,13 @@
 
             if (diffDays === 0) {
                 dateBadge.innerText = "✅ 오늘";
-                dateBadge.classList.add('badge-today');
+                dateBadge.className = 'date-badge badge-today';
             } else if (diffDays === 1) {
                 dateBadge.innerText = "⏮️ 1일 전";
-                dateBadge.classList.add('badge-1d');
+                dateBadge.className = 'date-badge badge-1d';
             } else {
                 dateBadge.innerText = `📅 ${diffDays}일 전`;
-                dateBadge.classList.add('badge-old');
+                dateBadge.className = 'date-badge badge-old';
             }
         }
     }
