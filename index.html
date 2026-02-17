@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (Restored & Filter)</title>
+<title>나만의 안키 (Deck Menu Fix)</title>
 <style>
-    /* 기본 테마 */
+    /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
@@ -21,15 +21,21 @@
     .filter-toggle-btn { color: var(--primary); } 
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
 
-    /* 필터 바 */
+    /* 필터 바 (Layout Push) */
     .filter-bar { 
-        position: absolute; top: 100%; left: 0; width: 100%; 
-        background: var(--surface); border-bottom: 1px solid var(--border); 
-        padding: 12px 15px; display: flex; gap: 10px; overflow-x: auto; 
+        width: 100%; background: var(--surface); 
+        display: flex; gap: 10px; overflow-x: auto; 
         z-index: 15; scrollbar-width: none; 
-        transform: translateY(-100%); transition: transform 0.3s ease; opacity: 0; pointer-events: none;
+        max-height: 0; opacity: 0; overflow-y: hidden;
+        transition: all 0.3s ease-in-out;
+        padding: 0 15px;
+        border-bottom: 0px solid var(--border);
     }
-    .filter-bar.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+    .filter-bar.open { 
+        max-height: 65px; opacity: 1; 
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--border);
+    }
     .filter-bar::-webkit-scrollbar { display: none; }
 
     .filter-chip { 
@@ -42,7 +48,7 @@
     .filter-chip.sort-chip { border-color: #5c5c5c; color: #e0e0e0; background: #333; }
     .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
 
-    /* 사이드바 (이전 버전 스타일 복구) */
+    /* 사이드바 */
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
@@ -72,10 +78,11 @@
     .backup-btn { background: #343a40; color: white; border: none; text-align: center; }
     .restore-btn { background: #495057; color: white; border: none; text-align: center; }
     .refresh-btn { background: #212529; color: var(--text-sub); border: 1px solid var(--border); text-align: center; margin-top: 10px; }
+    .sort-btn.active-filter { border: 2px solid var(--primary); background: #182836; color: var(--primary); }
 
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
-    .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; box-shadow: none; border: none; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-    .card-scroll-area { flex: 1; padding: 25px 20px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
+    .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+    .card-scroll-area { flex: 1; padding: 25px 20px; overflow-y: auto; }
     
     .card-info { display: flex; justify-content: space-between; width: 100%; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); align-items: center; }
     .info-left { display: flex; gap: 8px; align-items: center; }
@@ -97,34 +104,23 @@
     .text-area { font-size: 1.35rem; line-height: 1.6; word-break: keep-all; white-space: pre-wrap; width: 100%; margin-bottom: 20px; color: var(--text); font-weight: 500; position: relative; overflow-x: hidden; }
     table { table-layout: fixed !important; width: 100% !important; max-width: 100% !important; display: table !important; }
     .text-area *, .img-area * { max-width: 100% !important; box-sizing: border-box !important; }
-    img, svg, video { width: auto !important; max-width: 100% !important; height: auto !important; display: block; margin: 10px auto; }
-    img { border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    img { border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); max-width: 100% !important; height: auto !important; display: block; margin: 10px auto; }
 
     .divider { display: none; border: 0; border-top: 2px dashed var(--border); margin: 30px 0; position: relative; }
     .divider::after { content: "정답"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--surface); padding: 0 10px; color: var(--text-sub); font-size: 0.8rem; font-weight: bold; }
     #answer-section { display: none; padding-bottom: 20px; animation: fadeIn 0.3s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    .footer { width: 100%; padding: 10px 20px; padding-bottom: calc(35px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); z-index: 10; display: flex; flex-direction: column; gap: 10px; justify-content: center; flex-shrink: 0; box-shadow: 0 -5px 15px rgba(0,0,0,0.1); }
+    .footer { width: 100%; padding: 10px 20px; padding-bottom: calc(35px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); z-index: 10; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
     .nav-btns, .grade-btns { display: flex; justify-content: space-between; width: 100%; margin: 0; gap: 12px; }
-    .nav-btn { flex: 1; background: var(--input-bg); border: 1px solid var(--border); padding: 14px 0; border-radius: 12px; cursor: pointer; font-weight: bold; color: var(--text); font-size: 1rem; text-align: center; transition: 0.2s; }
-    .nav-btn:active { background: var(--btn-hover); }
-    .g-btn { flex: 1; padding: 16px 0; border: none; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 1.1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); margin: 0; text-align: center; }
-    .g-btn:active { transform: scale(0.98); opacity: 0.9; }
+    .nav-btn { flex: 1; background: var(--input-bg); border: 1px solid var(--border); padding: 14px 0; border-radius: 12px; cursor: pointer; font-weight: bold; color: var(--text); font-size: 1rem; text-align: center; }
+    .g-btn { flex: 1; padding: 16px 0; border: none; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 1.1rem; }
     .bg-x { background: #fa5252; } .bg-tri { background: #fab005; } .bg-o { background: #40c057; }
 
     .click-guide { text-align: center; color: var(--text-sub); font-size: 0.9rem; margin-top: 40px; cursor: pointer; padding: 30px; border: 2px dashed var(--border); border-radius: 12px; background: #181818; }
-    .click-guide:active { background: #222; }
-
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; display: none; align-items: center; justify-content: center; }
-    .modal-content { background: var(--surface); width: 90%; max-width: 500px; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; border: 1px solid var(--border); }
-    .modal-title { font-weight: bold; font-size: 1.2rem; color: var(--text); }
-    .edit-label { font-size: 0.9rem; color: var(--text-sub); font-weight: bold; }
-    .edit-input { width: 100%; padding: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); border-radius: 8px; font-family: inherit; font-size: 1rem; resize: vertical; min-height: 80px; }
-    .modal-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-    .modal-btn { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
-    .btn-save { background: var(--primary); color: white; } .btn-cancel { background: var(--input-bg); color: var(--text); }
-    #loading { margin-top: 50%; color: var(--text-sub); text-align: center; }
+    .modal-content { background: var(--surface); width: 90%; max-width: 500px; padding: 25px; border-radius: 15px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 15px; }
+    .edit-input { width: 100%; padding: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); border-radius: 8px; min-height: 80px; }
     .ox-highlight { font-size: 4rem; font-weight: 900; text-align: center; display: block; margin: 10px 0; }
     .ox-o { color: #40c057; } .ox-x { color: #fa5252; }
 </style>
@@ -143,30 +139,14 @@
         </div>
         <div class="menu-section">
             <span class="menu-label">덱 관리</span>
-            <div style="font-size:0.8rem; color:var(--text-sub); margin-bottom:5px;">
-                * <b>minkunai87-ai/yoki</b> 자동 연동 중
-            </div>
-            <button class="btn-upload" onclick="document.getElementById('file-input').click()">+ (로컬) 텍스트 파일 추가</button>
-            <input type="file" id="file-input" accept=".txt" multiple style="display:none" onchange="handleFileUpload(this)">
             <ul class="deck-list" id="deck-list-ui"></ul>
         </div>
         <div class="menu-section">
-            <span class="menu-label">데이터 백업/복구</span>
-            <button class="backup-btn" onclick="exportData()">💾 백업 파일 저장</button>
-            <button class="restore-btn" onclick="document.getElementById('backup-input').click()">📂 백업 파일 불러오기</button>
-            <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
-        </div>
-        <div class="menu-section">
-            <span class="menu-label">이미지 설정</span>
-            <button class="btn-upload" style="background:#20c997;" onclick="document.getElementById('img-input').click()">🖼️ 이미지 폴더 연결 (로컬용)</button>
-            <input type="file" id="img-input" webkitdirectory directory multiple style="display:none" onchange="handleImgUpload(this)">
-        </div>
-        <div style="margin-top:20px; padding-bottom:30px;">
+            <span class="menu-label">설정</span>
             <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
+            <button class="refresh-btn" style="margin-top:5px;" onclick="exportData()">💾 백업 저장</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">
-            My Anki v10.46 (Restored & Header Filter)
-        </div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.52 (Menu Fix)</div>
     </div>
 
     <div class="header">
@@ -178,50 +158,43 @@
         <div class="header-controls">
             <span class="counter" id="card-counter">0 / 0</span>
         </div>
-        
-        <div class="filter-bar" id="filter-bar">
-            <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">🔄 원래순</div>
-            <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">🔥 오답순</div>
-            <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
-            <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
-            <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
-            <div class="filter-chip" id="filter-cmp" onclick="setFilterMode('cmp')">🆚 비교</div>
-            <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
-            <div class="filter-chip" id="filter-num" onclick="setFilterMode('num')">🔢 숫자</div>
-            <div class="filter-chip" id="filter-date" onclick="setFilterMode('date')">📅 날짜</div>
-            <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 벌칙</div>
-        </div>
+    </div>
+
+    <div class="filter-bar" id="filter-bar">
+        <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">🔄 원래순</div>
+        <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">🔥 오답순</div>
+        <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
+        <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
+        <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
+        <div class="filter-chip" id="filter-cmp" onclick="setFilterMode('cmp')">🆚 비교</div>
+        <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
+        <div class="filter-chip" id="filter-num" onclick="setFilterMode('num')">🔢 숫자</div>
+        <div class="filter-chip" id="filter-date" onclick="setFilterMode('date')">📅 날짜</div>
+        <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 벌칙</div>
     </div>
 
     <div class="main-container">
         <div class="card">
             <div class="card-scroll-area" id="scroll-area">
-                <div id="loading" style="display:none;">데이터 로딩 중...</div>
+                <div id="loading" style="display:none; text-align:center; padding-top:50px;">로딩 중...</div>
                 <div class="card-info" id="card-info">
-                    <div class="info-left">
-                        <span class="rate-badge" id="rate-badge">New</span>
-                        <span class="date-badge" id="date-badge"></span>
-                    </div>
+                    <div class="info-left"><span class="rate-badge" id="rate-badge">New</span><span class="date-badge" id="date-badge"></span></div>
                     <div class="icon-wrapper">
                         <div class="icon-row">
                             <button class="icon-btn edit-btn" onclick="openEditModal(event)">✏️</button>
-                            <button class="icon-btn mem-btn" id="mem-btn" onclick="toggleTag(event, 'mem')" title="암기">🧠</button>
-                            <button class="icon-btn cmp-btn" id="cmp-btn" onclick="toggleTag(event, 'cmp')" title="비교">🆚</button>
-                            <button class="icon-btn fav-btn" id="fav-btn" onclick="toggleTag(event, 'fav')" title="중요">⭐</button>
+                            <button class="icon-btn mem-btn" id="mem-btn" onclick="toggleTag(event, 'mem')">🧠</button>
+                            <button class="icon-btn cmp-btn" id="cmp-btn" onclick="toggleTag(event, 'cmp')">🆚</button>
+                            <button class="icon-btn fav-btn" id="fav-btn" onclick="toggleTag(event, 'fav')">⭐</button>
                         </div>
                         <div class="icon-row">
-                            <button class="icon-btn num-btn" id="num-btn" onclick="toggleTag(event, 'num')" title="숫자">🔢</button>
-                            <button class="icon-btn date-btn" id="date-btn" onclick="toggleTag(event, 'date')" title="날짜">📅</button>
-                            <button class="icon-btn pen-btn" id="pen-btn" onclick="toggleTag(event, 'pen')" title="벌칙">🚨</button>
+                            <button class="icon-btn num-btn" id="num-btn" onclick="toggleTag(event, 'num')">🔢</button>
+                            <button class="icon-btn date-btn" id="date-btn" onclick="toggleTag(event, 'date')">📅</button>
+                            <button class="icon-btn pen-btn" id="pen-btn" onclick="toggleTag(event, 'pen')">🚨</button>
                         </div>
                     </div>
                 </div>
-                <div id="question-section" class="content-box">
-                    <h3 style="color:var(--text-sub);" id="guide-msg">👈 메뉴에서 파일을 추가해주세요.</h3>
-                </div>
-                <div id="click-guide" class="click-guide" onclick="revealAnswer()">
-                    👇 터치하여 정답 확인
-                </div>
+                <div id="question-section" class="content-box"></div>
+                <div id="click-guide" class="click-guide" onclick="revealAnswer()">👇 터치하여 정답 확인</div>
                 <hr id="divider" class="divider">
                 <div id="answer-section" class="content-box"></div>
             </div>
@@ -242,213 +215,93 @@
 
     <div class="modal-overlay" id="edit-modal">
         <div class="modal-content">
-            <div class="modal-title">📝 카드 수정</div>
-            <div><span class="edit-label">질문 (Front)</span><textarea id="edit-q" class="edit-input"></textarea></div>
-            <div><span class="edit-label">정답 (Back)</span><textarea id="edit-a" class="edit-input"></textarea></div>
-            <div class="modal-btns">
-                <button class="modal-btn btn-cancel" onclick="closeEditModal()">취소</button>
-                <button class="modal-btn btn-save" onclick="saveEdit()">저장</button>
-            </div>
+            <textarea id="edit-q" class="edit-input"></textarea>
+            <textarea id="edit-a" class="edit-input"></textarea>
+            <button class="nav-btn" style="background:var(--primary); color:white;" onclick="saveEdit()">저장</button>
+            <button class="nav-btn" onclick="closeEditModal()">취소</button>
         </div>
     </div>
 
 <script>
-    const repoOwner = 'minkunai87-ai';
-    const repoName = 'yoki'; 
+    const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
-
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
-    let currentFilterMode = 'default', currentSortMode = 'original';
-    let imageMap = new Map(), isRevealed = false;
-    const STORAGE_KEY_LIBRARY = 'anki_final_library';
-    const STORAGE_KEY_STATS = 'anki_final_stats';
-    const STORAGE_KEY_EDITS = 'anki_final_edits';
-    const STORAGE_KEY_PROGRESS = 'anki_final_progress_v2'; 
-    const STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
+    let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
+    const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
 
-    window.onload = async function() {
-        if (location.protocol.startsWith('http')) { await autoScanGitHub(); }
-        else { loadLocalLibrary(); }
-    };
-
-    function loadLocalLibrary() {
-        const savedLib = localStorage.getItem(STORAGE_KEY_LIBRARY);
-        if (savedLib) {
-            try {
-                library = JSON.parse(savedLib);
-                renderDeckTree();
-                const lastDeck = localStorage.getItem(STORAGE_KEY_LAST_DECK);
-                if (lastDeck) {
-                    if (library[lastDeck]) selectDeck(lastDeck);
-                    else selectDeckGroup(lastDeck);
-                } else {
-                    const keys = Object.keys(library);
-                    if(keys.length > 0) selectDeck(keys[0]);
-                }
-            } catch(e) {}
-        }
-    }
+    window.onload = async function() { await autoScanGitHub(); };
 
     async function autoScanGitHub() {
         document.getElementById('loading').style.display = 'block';
-        document.getElementById('question-section').style.display = 'none';
-        let loadedCount = 0; const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}');
         try {
-            const listUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`;
-            const listResponse = await fetch(listUrl);
-            if (!listResponse.ok) throw new Error("Repo access failed");
-            const files = await listResponse.json();
-            const txtFiles = files.filter(f => f.name.endsWith('.txt'));
-            for (const file of txtFiles) {
-                try {
-                    const contentResponse = await fetch(file.download_url + '?t=' + new Date().getTime());
-                    const text = await contentResponse.text();
-                    processAnkiText(text, file.name, edits);
-                    loadedCount++;
-                } catch (e) { console.error("Error reading file:", file.name); }
+            const res = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/contents/`);
+            const files = (await res.json()).filter(f => f.name.endsWith('.txt'));
+            for (const file of files) {
+                const text = await (await fetch(file.download_url + '?t=' + Date.now())).text();
+                processAnkiText(text, file.name);
             }
-        } catch (error) { console.error("Auto scan failed:", error); }
-        renderDeckTree();
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('question-section').style.display = 'block';
-        if (loadedCount > 0) {
-            const lastDeck = localStorage.getItem(STORAGE_KEY_LAST_DECK);
-            if (lastDeck) {
-                if (library[lastDeck]) selectDeck(lastDeck);
-                else selectDeckGroup(lastDeck);
-            } else { selectDeck(Object.keys(library)[0]); }
-        } else { document.getElementById('question-section').innerHTML = "<h3>⚠️ 불러올 덱이 없습니다.</h3>"; }
-    }
-
-    // 🔥 [복구됨] TSV 파싱 로직
-    function parseAnkiRawData(str) {
-        const rows = []; let currentRow = []; let currentCell = ''; let cursor = 0; let inQuote = false;
-        while (cursor < str.length) {
-            const char = str[cursor]; const nextChar = str[cursor + 1];
-            if (inQuote) {
-                if (char === '"' && nextChar === '"') { currentCell += '"'; cursor += 2; } 
-                else if (char === '"') { inQuote = false; cursor++; } 
-                else { currentCell += char; cursor++; }
-            } else {
-                if (char === '"') { inQuote = true; cursor++; } 
-                else if (char === '\t') { currentRow.push(currentCell); currentCell = ''; cursor++; } 
-                else if (char === '\n' || char === '\r') {
-                    if (char === '\r' && nextChar === '\n') cursor++;
-                    currentRow.push(currentCell);
-                    if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) { rows.push(currentRow); }
-                    currentRow = []; currentCell = ''; cursor++;
-                } else { currentCell += char; cursor++; }
-            }
-        }
-        if (currentRow.length > 0 || currentCell !== '') { currentRow.push(currentCell); rows.push(currentRow); }
-        return rows;
-    }
-
-    // 🔥 [복구됨] 텍스트 처리 로직
-    function processAnkiText(text, filename, edits) {
-        const rows = parseAnkiRawData(text);
-        let currentDeck = filename.replace('.txt', '');
-
-        rows.forEach(fields => {
-            if (fields.length > 0 && fields[0].startsWith('#')) return;
-            let deckNameInRow = null; let q = "", a = "";
-            
-            if (fields.length >= 3) {
-                deckNameInRow = fields[0].replace(/::/g, '__');
-                q = fields[1]; a = fields.slice(2).join('<br>');
-            } else {
-                deckNameInRow = currentDeck;
-                if (fields.length === 2) { q = fields[0]; a = fields[1]; } 
-                else if (fields.length > 0) { q = fields[0]; a = fields.slice(1).join('<br>'); }
-            }
-            if(!q) return;
-            if (!library[deckNameInRow]) library[deckNameInRow] = [];
-            
-            const id = cyrb53(q);
-            if (edits[id]) { q = edits[id].q; a = edits[id].a; }
-            
-            let hiddenText = "";
-            const titleMatch = q.match(/title="([\s\S]*?)"/);
-            if (titleMatch) hiddenText = titleMatch[1];
-
-            library[deckNameInRow].push({ id, q, a, hiddenText });
-        });
-    }
-
-    function createDOM(rawText, isAnswer, questionText = "") {
-        let formattedText = rawText.replace(/""/g, '"');
-        if (formattedText.startsWith('"') && formattedText.endsWith('"')) formattedText = formattedText.slice(1, -1);
-        let cleanText = formattedText.replace(/title\s*=\s*"[^"]*"/gi, ''); 
+        } catch (e) {}
         
-        if (isAnswer && questionText) {
-            const cleanQ = questionText.replace(/<[^>]*>/g, '').trim();
-            const cleanA = cleanText.replace(/<[^>]*>/g, '').trim();
-            if(cleanQ.length > 5 && cleanA.includes(cleanQ)) {
-                if(!cleanText.includes('<svg') && !cleanText.includes('<div')) {}
-            }
+        // 렌더링 순서 중요: 덱 목록 생성 후 -> 마지막 덱 로드
+        renderDeckTree(); 
+        document.getElementById('loading').style.display = 'none';
+        
+        const last = localStorage.getItem(STORAGE_KEY_LAST_DECK);
+        if (last && library[last]) {
+            selectDeck(last);
+        } else if (Object.keys(library).length) {
+            selectDeck(Object.keys(library)[0]);
         }
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = cleanText;
-        const regex = /([a-zA-Z0-9_\-\.\%\(\)\s\uAC00-\uD7A3]+\.(jpg|jpeg|png|gif|svg|webp))/gi;
-        tempDiv.innerHTML = tempDiv.innerHTML.replace(regex, (match) => {
-            let fname = match.trim();
-            let url = imageMap.get(fname) || imageMap.get(fname.normalize('NFC')) || imageMap.get(fname.normalize('NFD'));
-            if (!url) { url = githubRawBase + encodeURIComponent(fname); }
-            return url;
-        });
-        tempDiv.querySelectorAll('*').forEach(el => {
-            el.style.width = ""; el.style.height = ""; el.style.maxWidth = "100%"; el.style.minWidth = "0"; 
-            el.removeAttribute("width"); el.removeAttribute("height");
-            if(el.tagName === 'TABLE' || el.tagName === 'TD' || el.tagName === 'TH') {
-                el.style.tableLayout = "fixed"; el.style.width = "100%"; el.removeAttribute("nowrap");
-            }
-        });
-        const wrapper = document.createElement('div'); wrapper.className = 'answer-layout';
-        const txtDiv = document.createElement('div'); txtDiv.className = 'text-area';
-        let textContent = tempDiv.textContent.trim();
-        const hasComplexTags = tempDiv.querySelector('div, svg'); 
-        if (isAnswer && !hasComplexTags && (textContent.startsWith('O') || textContent.startsWith('X'))) {
-             const firstChar = textContent.charAt(0);
-             const oxSpan = document.createElement('span'); 
-             oxSpan.className = `ox-highlight ${firstChar === 'O' ? 'ox-o' : 'ox-x'}`; 
-             oxSpan.innerText = firstChar;
-             txtDiv.appendChild(oxSpan); wrapper.appendChild(txtDiv); wrapper.appendChild(tempDiv);
-        } else { wrapper.appendChild(tempDiv); }
-        const imgs = wrapper.querySelectorAll('img');
-        imgs.forEach(img => {
-            img.onerror = function() {
-                if (this.src.includes('/main/')) { this.src = this.src.replace('/main/', '/master/'); }
-                else { this.style.border = "2px dashed #ff6b6b"; }
-            };
-        });
-        return wrapper;
     }
 
-    // 🔥 [필터 & 정렬 통합 로직]
+    function processAnkiText(text, filename) {
+        const lines = text.split(/\r?\n/);
+        let deck = filename.replace('.txt', '');
+        lines.forEach(l => {
+            if(!l.trim() || l.startsWith('#')) return;
+            const parts = l.split('\t');
+            if(parts.length < 2) return;
+            if(!library[deck]) library[deck] = [];
+            const q = parts[0], a = parts.slice(1).join('<br>');
+            library[deck].push({ id: cyrb53(q), q, a });
+        });
+    }
+
+    function createDOM(rawText, isAnswer) {
+        const temp = document.createElement('div'); temp.innerHTML = rawText.replace(/""/g, '"');
+        temp.querySelectorAll('*').forEach(el => {
+            el.style.width = el.style.height = ""; el.style.maxWidth = "100%";
+            if(['TABLE','TD','TH'].includes(el.tagName)) { el.style.tableLayout = "fixed"; el.style.width = "100%"; }
+        });
+        const wrap = document.createElement('div'); wrap.className = 'text-area';
+        let txt = temp.textContent.trim();
+        if(isAnswer && (txt.startsWith('O') || txt.startsWith('X'))) {
+            const ox = document.createElement('span'); ox.className = `ox-highlight ${txt[0]==='O'?'ox-o':'ox-x'}`;
+            ox.innerText = txt[0]; wrap.appendChild(ox);
+        }
+        wrap.appendChild(temp);
+        wrap.querySelectorAll('img').forEach(img => {
+            let src = img.getAttribute('src') || img.textContent;
+            img.src = imageMap.get(src) || (githubRawBase + encodeURIComponent(src));
+        });
+        return wrap;
+    }
+
     function applyFilterAndSort() {
         if(!currentDeckName) return;
         const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
         let filtered = [...originalDeck];
-
-        // 1. 필터
-        if(currentFilterMode !== 'default') {
-            filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
-        }
-
-        // 2. 정렬
-        if(currentSortMode === 'wrong') {
-            filtered.sort((a,b) => {
-                const sA = stats[a.id] || {correct:0, total:0}; 
-                const sB = stats[b.id] || {correct:0, total:0}; 
-                const rA = sA.total===0 ? 1 : (sA.correct / sA.total); 
-                const rB = sB.total===0 ? 1 : (sB.correct / sB.total); 
-                return rA - rB; // 정답률 낮은 순
-            });
-        }
-
-        activeDeck = filtered;
-        currentIndex = loadProgress(); // 🔥 필터/정렬 상태별 위치 로드
+        if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
+        if(currentSortMode === 'wrong') filtered.sort((a,b) => {
+            const sA = stats[a.id] || {correct:0, total:0}, sB = stats[b.id] || {correct:0, total:0};
+            const rA = sA.total === 0 ? 1 : (sA.correct / sA.total), rB = sB.total === 0 ? 1 : (sB.correct / sB.total);
+            return rA - rB;
+        });
+        activeDeck = filtered; currentIndex = loadProgress();
         if(currentIndex >= activeDeck.length) currentIndex = 0;
+        
+        // 덱 리스트 업데이트 (Active 표시용)
+        renderDeckTree(); 
         showCard();
     }
 
@@ -466,211 +319,112 @@
 
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
-    // 🔥 [복구됨] 덱 트리 렌더링 (폴더 구조)
-    function renderDeckTree() {
-        const list = document.getElementById('deck-list-ui'); list.innerHTML = '';
-        const names = Object.keys(library).sort();
-        if (names.length === 0) { list.innerHTML = '<li class="deck-item" style="justify-content:center;">덱 없음</li>'; return; }
-        const tree = {};
-        names.forEach(path => {
-            const parts = path.split('__'); let currentLevel = tree;
-            parts.forEach((part, index) => {
-                if (!currentLevel[part]) { currentLevel[part] = { _name: part, _fullPath: parts.slice(0, index + 1).join('__'), _children: {}, _isLeaf: false }; }
-                if (index === parts.length - 1 && library[path] && library[path].length > 0) { currentLevel[part]._isLeaf = true; }
-                currentLevel = currentLevel[part]._children;
-            });
-        });
-        function createTreeDOM(node, container) {
-            const keys = Object.keys(node).sort();
-            keys.forEach(key => {
-                const item = node[key];
-                const hasChildren = Object.keys(item._children).length > 0;
-                if (hasChildren) { 
-                    const li = document.createElement('li'); li.className = 'tree-folder';
-                    const header = document.createElement('div'); header.className = 'tree-header';
-                    const titleArea = document.createElement('div'); titleArea.className = 'folder-title';
-                    const countInfo = item._isLeaf ? `(${library[item._fullPath].length})` : '';
-                    titleArea.innerHTML = `<span class="folder-icon">📂</span> ${item._name} <small style="opacity:0.6; font-weight:normal;">${countInfo}</small>`;
-                    const playBtn = document.createElement('button'); playBtn.className = 'play-btn'; playBtn.innerText = '▶ 전체';
-                    playBtn.onclick = (e) => { e.stopPropagation(); selectDeckGroup(item._fullPath + '__'); };
-                    header.appendChild(titleArea); header.appendChild(playBtn); li.appendChild(header);
-                    const childContainer = document.createElement('ul'); childContainer.className = 'tree-children deck-list';
-                    header.onclick = () => { childContainer.classList.toggle('open'); };
-                    if (currentDeckName && (currentDeckName.startsWith(item._fullPath + '__') || currentDeckName === item._fullPath)) { childContainer.classList.add('open'); }
-                    li.appendChild(childContainer); container.appendChild(li);
-                    createTreeDOM(item._children, childContainer);
-                } else { 
-                    const li = document.createElement('li');
-                    const header = document.createElement('div');
-                    header.className = `tree-deck ${item._fullPath === currentDeckName ? 'active' : ''}`;
-                    header.innerHTML = `<span>📄 ${item._name} <small>(${library[item._fullPath].length})</small></span>`;
-                    const delBtn = document.createElement('button'); delBtn.className = 'del-btn'; delBtn.innerText = 'x';
-                    delBtn.onclick = (e) => { e.stopPropagation(); deleteDeck(item._fullPath); };
-                    header.appendChild(delBtn);
-                    header.onclick = () => selectDeck(item._fullPath);
-                    li.appendChild(header); container.appendChild(li);
-                }
-            });
-        }
-        createTreeDOM(tree, list);
+    function selectDeck(name) { 
+        currentDeckName = name; originalDeck = library[name]; 
+        localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
+        document.getElementById('deck-title').innerText = name.split('__').pop();
+        applyFilterAndSort();
     }
 
     function selectDeckGroup(prefix) {
-        let mergedCards = [];
-        Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) { mergedCards = mergedCards.concat(library[key]); } });
-        if (mergedCards.length === 0) { const exactKey = prefix.replace(/__$/, ''); if(library[exactKey]) { selectDeck(exactKey); return; } alert("하위 덱이 없습니다."); return; }
-        let displayName = prefix.replace(/__$/, '').split('__').pop();
-        currentDeckName = prefix.replace(/__$/, ''); 
-        originalDeck = mergedCards; 
+        let merged = [];
+        Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) merged = merged.concat(library[key]); });
+        if (!merged.length) return;
+        currentDeckName = prefix.replace(/__$/, ''); originalDeck = merged;
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
-        document.getElementById('deck-title').innerText = `📂 ${displayName} (통합)`;
-        
-        // 필터/정렬 상태 유지하며 적용
-        applyFilterAndSort(); 
+        document.getElementById('deck-title').innerText = currentDeckName.split('__').pop() + " (전체)";
+        applyFilterAndSort();
         toggleMenu(); // 메뉴 닫기
     }
 
-    function selectDeck(name) { 
-        if(!library[name]) return; 
-        currentDeckName = name; 
-        originalDeck = library[name]; 
-        localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
-        const displayName = name.split('__').pop(); 
-        document.getElementById('deck-title').innerText = `📄 ${displayName}`; 
-        
-        // 필터/정렬 상태 유지하며 적용
-        applyFilterAndSort(); 
-        toggleMenu(); // 메뉴 닫기
-    }
-
-    function filterCards() { 
-        const rawQuery = document.getElementById('search-input').value.toLowerCase();
-        if(!rawQuery) { applyFilterAndSort(); return; } // 검색 없으면 필터/정렬 적용
-        activeDeck = originalDeck.filter(card => 
-            card.q.toLowerCase().includes(rawQuery) || 
-            card.a.toLowerCase().includes(rawQuery) ||
-            (card.hiddenText && card.hiddenText.toLowerCase().includes(rawQuery))
-        );
-        currentIndex = 0; 
-        showCard(); 
-    }
-
-    // 🔥 [진행상황 저장 키: 덱 + 필터 + 정렬]
-    function getProgressKey() {
-        if (!currentDeckName) return null;
-        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
-    }
-
-    function saveCurrentProgress() { 
-        const key = getProgressKey();
-        if (!key) return;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        progress[key] = currentIndex;
-        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress)); 
-    }
-
-    function loadProgress() {
-        const key = getProgressKey();
-        if (!key) return 0;
-        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        return progress[key] || 0;
-    }
-
-    function scrollToActiveDeck() {
-        const sidebar = document.getElementById('sidebar');
-        const activeEl = sidebar.querySelector('.tree-deck.active');
-        if (activeEl) {
-            let parent = activeEl.parentElement;
-            while (parent && parent !== sidebar) {
-                if (parent.classList.contains('tree-children')) { parent.classList.add('open'); parent.style.display = 'block'; }
-                parent = parent.parentElement;
-            }
-            activeEl.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    // 🔥 [복구된 렌더링 로직 + 자동 펼침]
+    function renderDeckTree() {
+        const list = document.getElementById('deck-list-ui'); list.innerHTML = '';
+        const names = Object.keys(library).sort();
+        const tree = {};
+        names.forEach(path => {
+            const parts = path.split('__'); let cur = tree;
+            parts.forEach((p, i) => {
+                if(!cur[p]) cur[p] = { _path: parts.slice(0, i+1).join('__'), _children: {}, _isLeaf: (i === parts.length-1) };
+                cur = cur[p]._children;
+            });
+        });
+        function createDOMTree(node, cont) {
+            Object.keys(node).sort().forEach(k => {
+                const item = node[k]; const hasChildren = Object.keys(item._children).length > 0;
+                const li = document.createElement('li');
+                if(hasChildren) {
+                    li.className = 'tree-folder';
+                    const head = document.createElement('div'); head.className = 'tree-header';
+                    head.innerHTML = `<div class="folder-title">📂 ${k}</div> <button class="play-btn">▶ 전체</button>`;
+                    head.onclick = () => { li.querySelector('.tree-children').classList.toggle('open'); };
+                    head.querySelector('.play-btn').onclick = (e) => { e.stopPropagation(); selectDeckGroup(item._path + '__'); };
+                    const childCont = document.createElement('ul'); childCont.className = 'tree-children';
+                    
+                    // 현재 보고 있는 덱이 이 폴더 안에 있다면 자동으로 펼치기
+                    if(currentDeckName && (currentDeckName.startsWith(item._path + '__') || currentDeckName === item._path)) {
+                        childCont.classList.add('open');
+                    }
+                    
+                    li.appendChild(head); li.appendChild(childCont); cont.appendChild(li);
+                    createDOMTree(item._children, childCont);
+                } else {
+                    li.className = `tree-deck ${item._path === currentDeckName ? 'active' : ''}`;
+                    li.innerHTML = `<span>📄 ${k}</span>`;
+                    li.onclick = () => { selectDeck(item._path); toggleMenu(); };
+                    cont.appendChild(li);
+                }
+            });
         }
+        createDOMTree(tree, list);
     }
 
+    // 🔥 [메뉴 토글 시 현재 위치로 스크롤]
     function toggleMenu() { 
         const sidebar = document.getElementById('sidebar');
         const overlay = document.querySelector('.sidebar-overlay');
         const isOpen = sidebar.classList.toggle('open'); 
         overlay.classList.toggle('open');
-        if (isOpen) { scrollToActiveDeck(); setTimeout(scrollToActiveDeck, 50); }
-    }
-
-    function handleFileUpload(input) { const files = input.files; if(files.length === 0) return; let processedCount = 0; const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); Array.from(files).forEach(file => { const reader = new FileReader(); reader.onload = (e) => { const text = e.target.result; processAnkiText(text, file.name, edits); processedCount++; if (processedCount === files.length) { saveLibrary(); renderDeckTree(); if (!currentDeckName) selectDeck(Object.keys(library)[0]); alert(`총 ${files.length}개 파일 처리됨`); toggleMenu(); } }; reader.readAsText(file, 'UTF-8'); }); input.value = ''; }
-    function saveLibrary() { try { localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(library)); } catch(e){} }
-    function deleteDeck(name) { if(confirm("삭제하시겠습니까?")) { delete library[name]; saveLibrary(); renderDeckTree(); if(currentDeckName === name) { currentDeckName=null; activeDeck=[]; showCard(); } } }
-    function handleImgUpload(input) { const files = input.files; if(files.length === 0) return; imageMap.clear(); for(let file of files) { const url = URL.createObjectURL(file); imageMap.set(file.name, url); imageMap.set(file.name.normalize('NFC'), url); imageMap.set(file.name.normalize('NFD'), url); } alert(`${files.length}개 이미지 연결됨`); showCard(); toggleMenu(); }
-    function openEditModal(e) { e.stopPropagation(); if(!activeDeck || activeDeck.length === 0) return; const card = activeDeck[currentIndex]; document.getElementById('edit-q').value = card.q; document.getElementById('edit-a').value = card.a; document.getElementById('edit-modal').style.display = 'flex'; }
-    function closeEditModal() { document.getElementById('edit-modal').style.display = 'none'; }
-    function saveEdit() { const newQ = document.getElementById('edit-q').value; const newA = document.getElementById('edit-a').value; const card = activeDeck[currentIndex]; card.q = newQ; card.a = newA; if (location.protocol.startsWith('http')) { const edits = JSON.parse(localStorage.getItem(STORAGE_KEY_EDITS) || '{}'); edits[card.id] = { q: newQ, a: newA }; localStorage.setItem(STORAGE_KEY_EDITS, JSON.stringify(edits)); } else { saveLibrary(); } closeEditModal(); showCard(); alert("수정 완료"); }
-    
-    function getVirtualDate(timestamp) {
-        if (!timestamp) return null;
-        const date = new Date(timestamp);
-        if (date.getHours() < 4) { date.setDate(date.getDate() - 1); }
-        date.setHours(0, 0, 0, 0);
-        return date;
-    }
-
-    function showCard() { 
-        if (!activeDeck || activeDeck.length === 0) { document.getElementById('question-section').innerHTML = "<h3 style='color:var(--text-sub)'>항목이 없습니다.</h3>"; document.getElementById('card-info').style.display='none'; return; } 
-        if(currentIndex >= activeDeck.length) currentIndex = 0; 
-        isRevealed = false; 
-        const card = activeDeck[currentIndex]; 
-        const stats = getStats(card.id); 
-        document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`; 
-        document.getElementById('card-info').style.display='flex'; 
-        updateStatsUI(stats); 
-        updateIconsUI(stats); 
-        const qSection = document.getElementById('question-section'); qSection.innerHTML = ''; 
-        qSection.appendChild(createDOM(card.q, false)); 
-        const aSection = document.getElementById('answer-section'); aSection.innerHTML = ''; 
-        aSection.appendChild(createDOM(card.a, true, card.q)); 
-        aSection.style.display = 'none'; document.getElementById('divider').style.display = 'none'; document.getElementById('click-guide').style.display = 'block'; document.getElementById('nav-area').style.display = 'flex'; document.getElementById('grade-area').style.display = 'none'; document.getElementById('scroll-area').scrollTop = 0; 
-    }
-    
-    function revealAnswer() { isRevealed = true; document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block'; document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex'; setTimeout(() => { document.getElementById('answer-section').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); }
-    function moveCard(delta) { let nextIdx = currentIndex + delta; if(nextIdx >= 0 && nextIdx < activeDeck.length) { currentIndex = nextIdx; saveCurrentProgress(); showCard(); } }
-    function grade(score) { saveStats(activeDeck[currentIndex].id, score); if (currentIndex < activeDeck.length - 1) { currentIndex++; saveCurrentProgress(); showCard(); } else { alert("끝!"); currentIndex=0; saveCurrentProgress(); showCard(); } }
-    function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false, lastDate: 0 }; }
-    function saveStats(id, score) { const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false, lastDate: 0 }; data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5; data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateStatsUI(data[id]); }
-    function toggleTag(e, type) { e.stopPropagation(); const card = activeDeck[currentIndex]; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[card.id]) data[card.id] = { correct: 0, total: 0, fav: false, mem: false, cmp: false, num: false, date: false, pen: false }; data[card.id][type] = !data[card.id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[card.id]); }
-    
-    function updateStatsUI(stats) { 
-        const badge = document.getElementById('rate-badge'); 
-        if(stats.total === 0) { badge.innerText = "New"; badge.className = "rate-badge"; } 
-        else { const rate = Math.round((stats.correct/stats.total)*100); badge.innerText = `${rate}% (${stats.total}회)`; badge.className = `rate-badge ${rate>=80?'high':(rate<50?'low':'')}`; } 
         
-        const dateBadge = document.getElementById('date-badge');
-        if (!stats.lastDate) {
-            dateBadge.style.display = 'none';
-        } else {
-            const todayVirtual = getVirtualDate(Date.now());
-            const reviewVirtual = getVirtualDate(stats.lastDate);
-            const diffTime = todayVirtual - reviewVirtual;
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-            dateBadge.style.display = 'inline-block';
-            dateBadge.className = 'date-badge'; 
-
-            if (diffDays === 0) {
-                dateBadge.innerText = "✅ 오늘";
-                dateBadge.classList.add('badge-today');
-            } else if (diffDays === 1) {
-                dateBadge.innerText = "⏮️ 1일 전";
-                dateBadge.classList.add('badge-1d');
-            } else {
-                dateBadge.innerText = `📅 ${diffDays}일 전`;
-                dateBadge.classList.add('badge-old');
-            }
+        if (isOpen) {
+            setTimeout(() => {
+                const activeEl = document.querySelector('.tree-deck.active');
+                if (activeEl) {
+                    activeEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+                }
+            }, 100);
         }
     }
-    
-    function updateIconsUI(stats) { document.getElementById('mem-btn').classList.toggle('active', stats.mem); document.getElementById('cmp-btn').classList.toggle('active', stats.cmp); document.getElementById('fav-btn').classList.toggle('active', stats.fav); document.getElementById('num-btn').classList.toggle('active', stats.num); document.getElementById('date-btn').classList.toggle('active', stats.date); document.getElementById('pen-btn').classList.toggle('active', stats.pen); }
-    function exportData() { const data = { stats: localStorage.getItem(STORAGE_KEY_STATS), edits: localStorage.getItem(STORAGE_KEY_EDITS), progress: localStorage.getItem(STORAGE_KEY_PROGRESS), lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK), timestamp: new Date().toLocaleString() }; const blob = new Blob([JSON.stringify(data)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,""); a.download = `anki_backup_${dateStr}.json`; a.click(); URL.revokeObjectURL(url); }
-    function importData(input) { const file = input.files[0]; if (!file) return; if(!confirm("⚠️ 현재 기기의 기록을 덮어씌웁니다.\n계속하시겠습니까?")) { input.value = ''; return; } const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if(data.stats) localStorage.setItem(STORAGE_KEY_STATS, data.stats); if(data.edits) localStorage.setItem(STORAGE_KEY_EDITS, data.edits); if(data.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, data.progress); if(data.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, data.lastDeck); alert("✅ 복구 완료!\n페이지를 새로고침합니다."); location.reload(); } catch (err) { alert("❌ 잘못된 백업 파일입니다."); } }; reader.readAsText(file); }
+
+    function saveCurrentProgress() {
+        const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
+        const p = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        p[key] = currentIndex; localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(p));
+    }
+    function loadProgress() {
+        const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
+        return JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}')[key] || 0;
+    }
+    function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || {correct:0, total:0}; }
+    function toggleTag(e, type) { 
+        e.stopPropagation(); const id = activeDeck[currentIndex].id;
+        const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        if(!data[id]) data[id] = { correct: 0, total: 0 };
+        data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        updateIconsUI(data[id]);
+    }
+    function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
+    function filterCards() { 
+        const q = document.getElementById('search-input').value.toLowerCase();
+        if(!q) { applyFilterAndSort(); return; }
+        activeDeck = originalDeck.filter(c => c.q.toLowerCase().includes(q) || c.a.toLowerCase().includes(q));
+        currentIndex = 0; showCard();
+    }
     const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
+    function openEditModal(e) { e.stopPropagation(); const c = activeDeck[currentIndex]; document.getElementById('edit-q').value=c.q; document.getElementById('edit-a').value=c.a; document.getElementById('edit-modal').style.display='flex'; }
+    function closeEditModal() { document.getElementById('edit-modal').style.display='none'; }
+    function saveEdit() { const c = activeDeck[currentIndex]; c.q = document.getElementById('edit-q').value; c.a = document.getElementById('edit-a').value; closeEditModal(); showCard(); }
+    function exportData() { const blob = new Blob([JSON.stringify(localStorage)], {type:'application/json'}); const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='anki_backup.json'; a.click(); }
 </script>
 </body>
 </html>
