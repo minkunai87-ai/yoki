@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v11.0 Cloud Sync)</title>
+<title>나만의 안키 (v11.2 Sync Button Fix)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -26,18 +26,18 @@
     .filter-toggle-btn { color: var(--primary); } 
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
     
-    /* 🔥 동기화 상태 아이콘 */
-    .sync-status { font-size: 0.8rem; margin-right: 5px; }
+    /* 동기화 아이콘 (헤더에서는 숨김, 메뉴에 버튼 있음) */
+    .sync-status { display: none; }
 
     /* 필터 바 */
-    .filter-bar { width: 100%; background: var(--surface); display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-height: 0; opacity: 0; overflow-y: hidden; transition: all 0.3s ease-in-out; padding: 0 15px; }
-    .filter-bar.open { max-height: 60px; opacity: 1; padding-bottom: 15px; }
+    .filter-bar { width: 100%; background: var(--surface); display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-height: 0; opacity: 0; overflow-y: hidden; transition: all 0.3s ease-in-out; padding: 0 15px; border-bottom: 0px solid var(--border); }
+    .filter-bar.open { max-height: 65px; opacity: 1; padding: 12px 15px; border-bottom: 1px solid var(--border); }
     .filter-bar::-webkit-scrollbar { display: none; }
 
-    .filter-chip { background: var(--input-bg); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; color: var(--text-sub); font-size: 0.85rem; font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
-    .filter-chip.active { background: #183e57; color: #74c0fc; border-color: #1c7ed6; }
-    .filter-chip.sort-chip { background: #2b2b2b; border-color: #555; color: #ccc; }
-    .filter-chip.sort-chip.active { background: #443808; color: #ffd43b; border-color: #fcc419; }
+    .filter-chip { background: var(--input-bg); border: 1px solid var(--border); padding: 8px 14px; border-radius: 20px; color: var(--text-sub); font-size: 0.85rem; font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+    .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .filter-chip.sort-chip { border-color: #5c5c5c; color: #e0e0e0; background: #333; }
+    .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
     .filter-chip.reset-chip { color: #ff8787; border-color: #ff8787; }
     .filter-chip.reset-chip:active { background: #fa5252; color: white; }
 
@@ -73,6 +73,8 @@
     .backup-btn { background: #343a40; color: white; border: none; text-align: center; }
     .restore-btn { background: #495057; color: white; border: none; text-align: center; }
     .refresh-btn { background: #212529; color: var(--text-sub); border: 1px solid var(--border); text-align: center; margin-top: 10px; }
+    
+    /* 🔥 [복구] 동기화 설정 버튼 스타일 */
     .sync-btn { background: #0b2e13; color: #40c057; border: 1px solid #40c057; text-align: center; }
 
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
@@ -147,7 +149,7 @@
             <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
             <button class="refresh-btn" style="margin-top:15px; border-color:#555;" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v11.0 (Cloud Sync)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v11.2 (Sync Button Fixed)</div>
     </div>
 
     <div class="header-container">
@@ -243,17 +245,18 @@
         <div class="modal-content">
             <div style="font-weight:bold; font-size:1.2rem; text-align:center;">☁️ GitHub 동기화 설정</div>
             <div style="font-size:0.9rem; color:var(--text-sub); text-align:center;">
-                GitHub 토큰과 Gist ID를 입력하면<br>모든 기기에서 학습 기록이 공유됩니다.
+                GitHub 토큰과 Gist ID를 입력하세요.<br>
+                <span style="font-size:0.8rem; opacity:0.7;">(한 번만 입력하면 자동 저장됩니다)</span>
             </div>
             <div>
-                <span style="font-size:0.8rem; color:var(--text-sub);">GitHub Token (ghp_...)</span>
-                <input type="password" id="sync-token" class="edit-input" style="min-height:40px;" placeholder="ghp_xxxxxxxxxxxx">
+                <span style="font-size:0.8rem; color:var(--text-sub);">Token (ghp_...)</span>
+                <input type="password" id="sync-token" class="edit-input" style="min-height:40px;" placeholder="GitHub Token 붙여넣기">
             </div>
             <div>
-                <span style="font-size:0.8rem; color:var(--text-sub);">Gist ID (URL 뒷부분)</span>
-                <input type="text" id="sync-gist-id" class="edit-input" style="min-height:40px;" placeholder="xxxxxxxxxxxxxxxx">
+                <span style="font-size:0.8rem; color:var(--text-sub);">Gist ID (url 뒷부분)</span>
+                <input type="text" id="sync-gist-id" class="edit-input" style="min-height:40px;" placeholder="Gist ID 붙여넣기">
             </div>
-            <button class="nav-btn" style="background:#0b2e13; color:#40c057; border:none;" onclick="saveSyncSettings()">설정 저장 및 동기화 시작</button>
+            <button class="nav-btn" style="background:#0b2e13; color:#40c057; border:none;" onclick="saveSyncSettings()">저장 및 동기화 시작</button>
             <button class="nav-btn" onclick="closeSyncModal()">닫기</button>
         </div>
     </div>
@@ -267,33 +270,25 @@
     // 로컬 스토리지 키
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
-    const STORAGE_KEY_SYNC_CONFIG = 'anki_final_sync_config'; // 🔥 동기화 설정 키
+    const STORAGE_KEY_SYNC_CONFIG = 'anki_final_sync_config';
 
     const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순' };
 
-    // 🔥 동기화 변수
     let githubToken = null;
     let gistId = null;
     let syncDebounceTimer = null;
 
     window.onload = async function() { 
-        loadSyncSettings(); // 설정 로드
-        await autoScanGitHub(); // 덱 파일 로드
-        
-        // 🔥 동기화 시도 (토큰 있으면)
-        if(githubToken && gistId) {
-            await syncPull();
-        }
-        
-        initApp(); // 앱 상태 복구 및 렌더링
+        loadSyncSettings(); 
+        await autoScanGitHub();
+        if(githubToken && gistId) { await syncPull(); }
+        initApp();
     };
 
-    // --- 🔥 [Core] 동기화 로직 ---
     function loadSyncSettings() {
         const config = JSON.parse(localStorage.getItem(STORAGE_KEY_SYNC_CONFIG) || '{}');
         githubToken = config.token;
         gistId = config.gistId;
-        updateSyncStatusUI();
     }
 
     function openSyncModal() {
@@ -306,31 +301,18 @@
     async function saveSyncSettings() {
         const t = document.getElementById('sync-token').value.trim();
         const g = document.getElementById('sync-gist-id').value.trim();
-        if(!t || !g) { alert("토큰과 ID를 모두 입력해주세요."); return; }
+        if(!t || !g) { alert("토큰과 Gist ID를 모두 입력해주세요."); return; }
         
         githubToken = t; gistId = g;
         localStorage.setItem(STORAGE_KEY_SYNC_CONFIG, JSON.stringify({ token: t, gistId: g }));
         closeSyncModal();
-        alert("설정이 저장되었습니다. 데이터를 불러옵니다...");
+        alert("저장되었습니다. 데이터를 불러옵니다...");
         await syncPull();
-        location.reload(); // 새로고침하여 적용
+        location.reload();
     }
 
-    function updateSyncStatusUI(status = 'idle') {
-        const icon = document.getElementById('sync-status-icon');
-        if(!githubToken) { icon.innerText = ''; return; }
-        
-        if(status === 'pulling') icon.innerText = '⬇️';
-        else if(status === 'pushing') icon.innerText = '⬆️';
-        else if(status === 'done') icon.innerText = '✅';
-        else if(status === 'error') icon.innerText = '⚠️';
-        else icon.innerText = '☁️';
-    }
-
-    // Gist에서 데이터 가져오기 (Pull)
     async function syncPull() {
         if(!githubToken || !gistId) return;
-        updateSyncStatusUI('pulling');
         try {
             const res = await fetch(`https://api.github.com/gists/${gistId}`, {
                 headers: { 'Authorization': `token ${githubToken}` }
@@ -340,25 +322,17 @@
             const fileContent = json.files['anki_data.json'].content;
             if(fileContent && fileContent !== '{}') {
                 const cloudData = JSON.parse(fileContent);
-                // 로컬 스토리지 덮어쓰기
                 if(cloudData.stats) localStorage.setItem(STORAGE_KEY_STATS, cloudData.stats);
                 if(cloudData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, cloudData.progress);
                 if(cloudData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, cloudData.lastDeck);
                 if(cloudData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, cloudData.filter);
                 console.log("Cloud data loaded");
             }
-            updateSyncStatusUI('done');
-        } catch(e) {
-            console.error(e);
-            updateSyncStatusUI('error');
-        }
+        } catch(e) { console.error(e); }
     }
 
-    // Gist로 데이터 보내기 (Push) - 디바운스 적용
     function triggerSync() {
         if(!githubToken || !gistId) return;
-        updateSyncStatusUI('pushing'); // 즉시 UI 변경
-        
         clearTimeout(syncDebounceTimer);
         syncDebounceTimer = setTimeout(async () => {
             const dataToSave = {
@@ -368,7 +342,6 @@
                 filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE),
                 timestamp: Date.now()
             };
-            
             try {
                 await fetch(`https://api.github.com/gists/${gistId}`, {
                     method: 'PATCH',
@@ -377,20 +350,13 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        files: {
-                            'anki_data.json': { content: JSON.stringify(dataToSave) }
-                        }
+                        files: { 'anki_data.json': { content: JSON.stringify(dataToSave) } }
                     })
                 });
-                updateSyncStatusUI('done');
-            } catch(e) {
-                console.error(e);
-                updateSyncStatusUI('error');
-            }
-        }, 2000); // 2초 뒤 전송 (너무 잦은 요청 방지)
+                console.log("Cloud synced");
+            } catch(e) { console.error(e); }
+        }, 2000); 
     }
-
-    // --- 기존 로직 (v10.58) ---
 
     async function autoScanGitHub() {
         document.getElementById('loading').style.display = 'block';
@@ -495,7 +461,7 @@
     function saveFilterState() {
         const state = JSON.stringify({ filter: currentFilterMode, sort: currentSortMode });
         localStorage.setItem(STORAGE_KEY_FILTER_STATE, state);
-        triggerSync(); // 🔥 필터 변경 시 동기화
+        triggerSync(); 
     }
     
     function highlightFilter() {
@@ -511,7 +477,7 @@
         localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
         document.getElementById('deck-title').innerText = name.split('__').pop();
         applyFilterAndSort();
-        triggerSync(); // 🔥 덱 이동 시 동기화
+        triggerSync(); 
     }
 
     function selectDeckGroup(prefix) {
@@ -523,7 +489,7 @@
         document.getElementById('deck-title').innerText = currentDeckName.split('__').pop() + " (전체)";
         applyFilterAndSort();
         toggleMenu();
-        triggerSync(); // 🔥 덱 이동 시 동기화
+        triggerSync(); 
     }
 
     function showCard() {
@@ -550,7 +516,7 @@
         if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0 };
         data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5;
         data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
-        triggerSync(); // 🔥 학습 시 동기화
+        triggerSync(); 
         if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
     }
 
@@ -628,7 +594,7 @@
         const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
         const p = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
         p[key] = currentIndex; localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(p));
-        triggerSync(); // 🔥 위치 저장 시 동기화
+        triggerSync(); 
     }
     function loadProgress() {
         const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
@@ -640,7 +606,7 @@
         const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
         if(!data[id]) data[id] = { correct: 0, total: 0 };
         data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
-        triggerSync(); // 🔥 태그 변경 시 동기화
+        triggerSync(); 
         updateIconsUI(data[id]);
     }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
