@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.59 Filter Status)</title>
+<title>나만의 안키 (v11.0 Cloud Sync)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -13,10 +13,10 @@
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
     
     /* 헤더 */
-    .header { background: var(--surface); padding: 0 15px; padding-top: calc(env(safe-area-inset-top) + 15px); padding-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0; position: relative; }
+    .header-container { background: var(--surface); border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0; transition: all 0.3s ease; }
+    .header { padding: 0 15px; padding-top: calc(env(safe-area-inset-top) + 15px); padding-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
     .header-left { display: flex; gap: 15px; align-items: center; }
     
-    /* 🔥 [수정] 헤더 중앙 정렬 및 상태 텍스트용 스타일 */
     .header-center { display: flex; flex-direction: column; align-items: center; max-width: 50vw; }
     .header-title { font-weight: bold; font-size: 1.1rem; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 100%; text-align: center; }
     .filter-status-text { font-size: 0.75rem; color: var(--primary); margin-top: 2px; opacity: 0.9; white-space: nowrap; }
@@ -25,35 +25,19 @@
     .menu-btn, .filter-toggle-btn { font-size: 1.5rem; cursor: pointer; background: none; border: none; padding: 0; color: var(--text); display: flex; align-items: center; justify-content: center; }
     .filter-toggle-btn { color: var(--primary); } 
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
+    
+    /* 🔥 동기화 상태 아이콘 */
+    .sync-status { font-size: 0.8rem; margin-right: 5px; }
 
-    /* 필터 바 (Layout Push) */
-    .filter-bar { 
-        width: 100%; background: var(--surface); 
-        display: flex; gap: 8px; overflow-x: auto; 
-        z-index: 15; scrollbar-width: none; 
-        max-height: 0; opacity: 0; overflow-y: hidden;
-        transition: all 0.3s ease-in-out;
-        padding: 0 15px;
-        border-bottom: 0px solid var(--border);
-    }
-    .filter-bar.open { 
-        max-height: 65px; opacity: 1; 
-        padding: 12px 15px;
-        border-bottom: 1px solid var(--border);
-    }
+    /* 필터 바 */
+    .filter-bar { width: 100%; background: var(--surface); display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-height: 0; opacity: 0; overflow-y: hidden; transition: all 0.3s ease-in-out; padding: 0 15px; }
+    .filter-bar.open { max-height: 60px; opacity: 1; padding-bottom: 15px; }
     .filter-bar::-webkit-scrollbar { display: none; }
 
-    .filter-chip { 
-        background: var(--input-bg); border: 1px solid var(--border); 
-        padding: 8px 14px; border-radius: 20px; color: var(--text-sub); 
-        font-size: 0.85rem; font-weight: bold; cursor: pointer; 
-        white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 6px; transition: 0.2s;
-    }
-    .filter-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .filter-chip.sort-chip { border-color: #5c5c5c; color: #e0e0e0; background: #333; }
-    .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
-    
-    /* 🔥 [New] 초기화 버튼 스타일 */
+    .filter-chip { background: var(--input-bg); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; color: var(--text-sub); font-size: 0.85rem; font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0; display: flex; align-items: center; gap: 5px; transition: 0.2s; }
+    .filter-chip.active { background: #183e57; color: #74c0fc; border-color: #1c7ed6; }
+    .filter-chip.sort-chip { background: #2b2b2b; border-color: #555; color: #ccc; }
+    .filter-chip.sort-chip.active { background: #443808; color: #ffd43b; border-color: #fcc419; }
     .filter-chip.reset-chip { color: #ff8787; border-color: #ff8787; }
     .filter-chip.reset-chip:active { background: #fa5252; color: white; }
 
@@ -70,24 +54,17 @@
     .search-input:focus { border-color: var(--primary); outline: none; }
     .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-sub); }
 
-    /* 리스트 스타일 제거 */
     ul, li { list-style: none; padding: 0; margin: 0; }
-    
     .deck-list { list-style: none; padding: 0; margin: 0; }
     .tree-folder { margin-bottom: 4px; }
-    
     .tree-header { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-radius: 8px; cursor: pointer; background: var(--input-bg); border: 1px solid var(--border); transition: 0.2s; margin-bottom: 4px; }
     .tree-header:hover { background: var(--btn-hover); }
-    
     .tree-header.active { background: #182836; color: #74c0fc; border: 2px solid #1c7ed6; }
-    
     .tree-children { display: none; padding-left: 10px; margin-left: 8px; border-left: 2px solid #444; }
     .tree-children.open { display: block; }
     .folder-title { flex: 1; font-weight: bold; color: #ffd43b; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; }
-    
     .tree-deck { padding: 12px; border-radius: 8px; cursor: pointer; background: var(--input-bg); margin-bottom: 4px; color: var(--text); font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
     .tree-deck.active { background: #182836; color: #74c0fc; font-weight: bold; border: 2px solid #1c7ed6; }
-    
     .play-btn { background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; margin-left: 8px; flex-shrink: 0; }
     .del-btn { background: none; border: none; color: var(--text-sub); font-weight: bold; padding: 0 5px; cursor: pointer; font-size: 1rem; }
 
@@ -96,7 +73,7 @@
     .backup-btn { background: #343a40; color: white; border: none; text-align: center; }
     .restore-btn { background: #495057; color: white; border: none; text-align: center; }
     .refresh-btn { background: #212529; color: var(--text-sub); border: 1px solid var(--border); text-align: center; margin-top: 10px; }
-    .sort-btn.active-filter { border: 2px solid var(--primary); background: #182836; color: var(--primary); }
+    .sync-btn { background: #0b2e13; color: #40c057; border: 1px solid #40c057; text-align: center; }
 
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
     .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
@@ -163,45 +140,50 @@
             <ul class="deck-list" id="deck-list-ui"></ul>
         </div>
         <div class="menu-section">
-            <span class="menu-label">설정</span>
-            <button class="refresh-btn" onclick="location.reload()">🔄 사이트 새로고침</button>
-            <button class="refresh-btn" style="margin-top:5px;" onclick="exportData()">💾 백업 저장</button>
-            <button class="refresh-btn" style="margin-top:5px;" onclick="document.getElementById('backup-input').click()">📂 백업 불러오기</button>
+            <span class="menu-label">데이터 관리</span>
+            <button class="refresh-btn sync-btn" onclick="openSyncModal()">☁️ 동기화 설정 (GitHub)</button>
+            <button class="refresh-btn" style="margin-top:5px;" onclick="exportData()">💾 백업 파일 저장</button>
+            <button class="refresh-btn" style="margin-top:5px;" onclick="document.getElementById('backup-input').click()">📂 백업 파일 불러오기</button>
             <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
+            <button class="refresh-btn" style="margin-top:15px; border-color:#555;" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.59 (UI Polish)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v11.0 (Cloud Sync)</div>
     </div>
 
-    <div class="header">
-        <div class="header-left">
-            <button class="menu-btn" onclick="toggleMenu()">☰</button>
-            <button class="filter-toggle-btn" onclick="toggleFilterBar()">🌪️</button>
+    <div class="header-container">
+        <div class="header">
+            <div class="header-left">
+                <button class="menu-btn" onclick="toggleMenu()">☰</button>
+                <button class="filter-toggle-btn" onclick="toggleFilterBar()">🌪️</button>
+            </div>
+            
+            <div class="header-center">
+                <div class="header-title" id="deck-title">나만의 안키</div>
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <span id="sync-status-icon" class="sync-status"></span>
+                    <div class="filter-status-text" id="filter-status-text">🔄 원래순 & 📋 전체</div>
+                </div>
+            </div>
+
+            <div class="header-controls">
+                <span class="counter" id="card-counter">0 / 0</span>
+            </div>
         </div>
         
-        <div class="header-center">
-            <div class="header-title" id="deck-title">나만의 안키</div>
-            <div class="filter-status-text" id="filter-status-text">🔄 원래순 & 📋 전체</div>
+        <div class="filter-bar" id="filter-bar">
+            <div class="filter-chip reset-chip" onclick="resetFilters()">🔄 초기화</div>
+            <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
+            <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">🔄 원래순</div>
+            <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">🔥 오답순</div>
+            <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
+            <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
+            <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
+            <div class="filter-chip" id="filter-cmp" onclick="setFilterMode('cmp')">🆚 비교</div>
+            <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
+            <div class="filter-chip" id="filter-num" onclick="setFilterMode('num')">🔢 숫자</div>
+            <div class="filter-chip" id="filter-date" onclick="setFilterMode('date')">📅 날짜</div>
+            <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 벌칙</div>
         </div>
-
-        <div class="header-controls">
-            <span class="counter" id="card-counter">0 / 0</span>
-        </div>
-    </div>
-
-    <div class="filter-bar" id="filter-bar">
-        <div class="filter-chip reset-chip" onclick="resetFilters()">🔄 초기화</div>
-        <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
-        
-        <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">🔄 원래순</div>
-        <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">🔥 오답순</div>
-        <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
-        <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
-        <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
-        <div class="filter-chip" id="filter-cmp" onclick="setFilterMode('cmp')">🆚 비교</div>
-        <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
-        <div class="filter-chip" id="filter-num" onclick="setFilterMode('num')">🔢 숫자</div>
-        <div class="filter-chip" id="filter-date" onclick="setFilterMode('date')">📅 날짜</div>
-        <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 벌칙</div>
     </div>
 
     <div class="main-container">
@@ -257,21 +239,158 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="sync-modal">
+        <div class="modal-content">
+            <div style="font-weight:bold; font-size:1.2rem; text-align:center;">☁️ GitHub 동기화 설정</div>
+            <div style="font-size:0.9rem; color:var(--text-sub); text-align:center;">
+                GitHub 토큰과 Gist ID를 입력하면<br>모든 기기에서 학습 기록이 공유됩니다.
+            </div>
+            <div>
+                <span style="font-size:0.8rem; color:var(--text-sub);">GitHub Token (ghp_...)</span>
+                <input type="password" id="sync-token" class="edit-input" style="min-height:40px;" placeholder="ghp_xxxxxxxxxxxx">
+            </div>
+            <div>
+                <span style="font-size:0.8rem; color:var(--text-sub);">Gist ID (URL 뒷부분)</span>
+                <input type="text" id="sync-gist-id" class="edit-input" style="min-height:40px;" placeholder="xxxxxxxxxxxxxxxx">
+            </div>
+            <button class="nav-btn" style="background:#0b2e13; color:#40c057; border:none;" onclick="saveSyncSettings()">설정 저장 및 동기화 시작</button>
+            <button class="nav-btn" onclick="closeSyncModal()">닫기</button>
+        </div>
+    </div>
+
 <script>
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
+    
+    // 로컬 스토리지 키
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
+    const STORAGE_KEY_SYNC_CONFIG = 'anki_final_sync_config'; // 🔥 동기화 설정 키
 
-    const modeNames = {
-        'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요',
-        'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙',
-        'original': '🔄 원래순', 'wrong': '🔥 오답순'
+    const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순' };
+
+    // 🔥 동기화 변수
+    let githubToken = null;
+    let gistId = null;
+    let syncDebounceTimer = null;
+
+    window.onload = async function() { 
+        loadSyncSettings(); // 설정 로드
+        await autoScanGitHub(); // 덱 파일 로드
+        
+        // 🔥 동기화 시도 (토큰 있으면)
+        if(githubToken && gistId) {
+            await syncPull();
+        }
+        
+        initApp(); // 앱 상태 복구 및 렌더링
     };
 
-    window.onload = async function() { await autoScanGitHub(); };
+    // --- 🔥 [Core] 동기화 로직 ---
+    function loadSyncSettings() {
+        const config = JSON.parse(localStorage.getItem(STORAGE_KEY_SYNC_CONFIG) || '{}');
+        githubToken = config.token;
+        gistId = config.gistId;
+        updateSyncStatusUI();
+    }
+
+    function openSyncModal() {
+        document.getElementById('sync-token').value = githubToken || '';
+        document.getElementById('sync-gist-id').value = gistId || '';
+        document.getElementById('sync-modal').style.display = 'flex';
+    }
+    function closeSyncModal() { document.getElementById('sync-modal').style.display = 'none'; }
+
+    async function saveSyncSettings() {
+        const t = document.getElementById('sync-token').value.trim();
+        const g = document.getElementById('sync-gist-id').value.trim();
+        if(!t || !g) { alert("토큰과 ID를 모두 입력해주세요."); return; }
+        
+        githubToken = t; gistId = g;
+        localStorage.setItem(STORAGE_KEY_SYNC_CONFIG, JSON.stringify({ token: t, gistId: g }));
+        closeSyncModal();
+        alert("설정이 저장되었습니다. 데이터를 불러옵니다...");
+        await syncPull();
+        location.reload(); // 새로고침하여 적용
+    }
+
+    function updateSyncStatusUI(status = 'idle') {
+        const icon = document.getElementById('sync-status-icon');
+        if(!githubToken) { icon.innerText = ''; return; }
+        
+        if(status === 'pulling') icon.innerText = '⬇️';
+        else if(status === 'pushing') icon.innerText = '⬆️';
+        else if(status === 'done') icon.innerText = '✅';
+        else if(status === 'error') icon.innerText = '⚠️';
+        else icon.innerText = '☁️';
+    }
+
+    // Gist에서 데이터 가져오기 (Pull)
+    async function syncPull() {
+        if(!githubToken || !gistId) return;
+        updateSyncStatusUI('pulling');
+        try {
+            const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+                headers: { 'Authorization': `token ${githubToken}` }
+            });
+            if(!res.ok) throw new Error('Sync Failed');
+            const json = await res.json();
+            const fileContent = json.files['anki_data.json'].content;
+            if(fileContent && fileContent !== '{}') {
+                const cloudData = JSON.parse(fileContent);
+                // 로컬 스토리지 덮어쓰기
+                if(cloudData.stats) localStorage.setItem(STORAGE_KEY_STATS, cloudData.stats);
+                if(cloudData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, cloudData.progress);
+                if(cloudData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, cloudData.lastDeck);
+                if(cloudData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, cloudData.filter);
+                console.log("Cloud data loaded");
+            }
+            updateSyncStatusUI('done');
+        } catch(e) {
+            console.error(e);
+            updateSyncStatusUI('error');
+        }
+    }
+
+    // Gist로 데이터 보내기 (Push) - 디바운스 적용
+    function triggerSync() {
+        if(!githubToken || !gistId) return;
+        updateSyncStatusUI('pushing'); // 즉시 UI 변경
+        
+        clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = setTimeout(async () => {
+            const dataToSave = {
+                stats: localStorage.getItem(STORAGE_KEY_STATS),
+                progress: localStorage.getItem(STORAGE_KEY_PROGRESS),
+                lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK),
+                filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE),
+                timestamp: Date.now()
+            };
+            
+            try {
+                await fetch(`https://api.github.com/gists/${gistId}`, {
+                    method: 'PATCH',
+                    headers: { 
+                        'Authorization': `token ${githubToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        files: {
+                            'anki_data.json': { content: JSON.stringify(dataToSave) }
+                        }
+                    })
+                });
+                updateSyncStatusUI('done');
+            } catch(e) {
+                console.error(e);
+                updateSyncStatusUI('error');
+            }
+        }, 2000); // 2초 뒤 전송 (너무 잦은 요청 방지)
+    }
+
+    // --- 기존 로직 (v10.58) ---
 
     async function autoScanGitHub() {
         document.getElementById('loading').style.display = 'block';
@@ -283,15 +402,16 @@
                 processAnkiText(text, file.name);
             }
         } catch (e) { console.log(e); }
-        renderDeckTree();
         document.getElementById('loading').style.display = 'none';
-        
+    }
+
+    function initApp() {
+        renderDeckTree();
         const last = localStorage.getItem(STORAGE_KEY_LAST_DECK);
         const savedFilter = JSON.parse(localStorage.getItem(STORAGE_KEY_FILTER_STATE) || '{}');
         if(savedFilter.filter) currentFilterMode = savedFilter.filter;
         if(savedFilter.sort) currentSortMode = savedFilter.sort;
         
-        // 🔥 UI 갱신 (초기 로딩 시)
         updateFilterStatusUI();
         highlightFilter();
 
@@ -307,27 +427,16 @@
         const lines = text.split(/\r?\n/);
         let deck = filename.replace('.txt', '');
         let currentCard = null;
-
         lines.forEach(line => {
             if(!line.trim()) return;
             const parts = line.split('\t'); 
-
             if(parts.length >= 2) {
                 if(currentCard) pushCard(currentCard);
                 let dName = deck, q = parts[0], a = parts[1];
-                
-                if(parts.length >= 3) {
-                    dName = parts[0].replace(/::/g, '__');
-                    q = parts[1];
-                    a = parts.slice(2).join('<br>');
-                } else if(parts.length === 2) {
-                    q = parts[0];
-                    a = parts[1];
-                }
+                if(parts.length >= 3) { dName = parts[0].replace(/::/g, '__'); q = parts[1]; a = parts.slice(2).join('<br>'); }
+                else if(parts.length === 2) { q = parts[0]; a = parts[1]; }
                 currentCard = { deck: dName, q: q, a: a };
-            } else {
-                if(currentCard) { currentCard.a += "<br>" + line; }
-            }
+            } else { if(currentCard) currentCard.a += "<br>" + line; }
         });
         if(currentCard) pushCard(currentCard);
     }
@@ -339,13 +448,8 @@
 
     function createDOM(rawText, isAnswer) {
         let txt = rawText.trim();
-        if(txt.startsWith('"') && txt.endsWith('"')) {
-            txt = txt.slice(1, -1).replace(/""/g, '"');
-        }
-
-        const temp = document.createElement('div'); 
-        temp.innerHTML = txt;
-        
+        if(txt.startsWith('"') && txt.endsWith('"')) txt = txt.slice(1, -1).replace(/""/g, '"');
+        const temp = document.createElement('div'); temp.innerHTML = txt;
         const regex = /([a-zA-Z0-9_\-\.\%\(\)\s\uAC00-\uD7A3]+\.(jpg|jpeg|png|gif|svg|webp))/gi;
         temp.innerHTML = temp.innerHTML.replace(regex, (match) => {
             let fname = match.trim();
@@ -353,7 +457,6 @@
             if (!url) { url = githubRawBase + encodeURIComponent(fname); }
             return url;
         });
-
         const wrap = document.createElement('div'); wrap.className = 'text-area';
         let plainTxt = temp.textContent.trim();
         if(isAnswer && (plainTxt.startsWith('O') || plainTxt.startsWith('X'))) {
@@ -376,51 +479,29 @@
         });
         activeDeck = filtered; currentIndex = loadProgress();
         if(currentIndex >= activeDeck.length) currentIndex = 0;
-        
-        updateFilterStatusUI(); // 🔥 상태 텍스트 갱신
-        renderDeckTree();
-        showCard();
+        updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
-    // 🔥 [New] 필터 상태 텍스트 업데이트
     function updateFilterStatusUI() {
         const sortText = modeNames[currentSortMode] || '🔄 원래순';
         const filterText = modeNames[currentFilterMode] || '📋 전체';
         document.getElementById('filter-status-text').innerText = `${sortText} & ${filterText}`;
     }
 
-    function setFilterMode(mode) {
-        currentFilterMode = mode;
-        saveFilterState();
-        highlightFilter();
-        applyFilterAndSort();
-    }
-
-    function setSortMode(mode) {
-        currentSortMode = mode;
-        saveFilterState();
-        highlightFilter();
-        applyFilterAndSort();
-    }
-
-    // 🔥 [New] 필터 초기화
-    function resetFilters() {
-        currentFilterMode = 'default';
-        currentSortMode = 'original';
-        saveFilterState();
-        highlightFilter();
-        applyFilterAndSort();
-    }
-
+    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
+    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
+    function resetFilters() { currentFilterMode = 'default'; currentSortMode = 'original'; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
+    
     function saveFilterState() {
-        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode }));
+        const state = JSON.stringify({ filter: currentFilterMode, sort: currentSortMode });
+        localStorage.setItem(STORAGE_KEY_FILTER_STATE, state);
+        triggerSync(); // 🔥 필터 변경 시 동기화
     }
+    
     function highlightFilter() {
         document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-        const fBtn = document.getElementById(`filter-${currentFilterMode}`);
-        const sBtn = document.getElementById(`sort-${currentSortMode}`);
-        if(fBtn) fBtn.classList.add('active');
-        if(sBtn) sBtn.classList.add('active');
+        document.getElementById(`filter-${currentFilterMode}`).classList.add('active');
+        document.getElementById(`sort-${currentSortMode}`).classList.add('active');
     }
 
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
@@ -430,22 +511,19 @@
         localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
         document.getElementById('deck-title').innerText = name.split('__').pop();
         applyFilterAndSort();
+        triggerSync(); // 🔥 덱 이동 시 동기화
     }
 
     function selectDeckGroup(prefix) {
         let merged = [];
-        Object.keys(library).forEach(key => { 
-            if (key.startsWith(prefix) || key === prefix.replace('__', '')) {
-                merged = merged.concat(library[key]); 
-            }
-        });
+        Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) merged = merged.concat(library[key]); });
         if (!merged.length) { alert("하위 덱이 없습니다."); return; }
-        
         currentDeckName = prefix.replace(/__$/, ''); originalDeck = merged;
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         document.getElementById('deck-title').innerText = currentDeckName.split('__').pop() + " (전체)";
         applyFilterAndSort();
         toggleMenu();
+        triggerSync(); // 🔥 덱 이동 시 동기화
     }
 
     function showCard() {
@@ -453,20 +531,16 @@
         const card = activeDeck[currentIndex]; const s = getStats(card.id);
         document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`;
         updateStatsUI(s); updateIconsUI(s);
-        
         const qDiv = document.getElementById('question-section'); qDiv.innerHTML = ''; qDiv.appendChild(createDOM(card.q, false));
         const aDiv = document.getElementById('answer-section'); aDiv.innerHTML = ''; aDiv.appendChild(createDOM(card.a, true));
-        
         aDiv.style.display = 'none'; document.getElementById('divider').style.display = 'none';
         document.getElementById('click-guide').style.display = 'block'; document.getElementById('grade-area').style.display = 'none';
-        document.getElementById('nav-area').style.display = 'flex';
-        document.getElementById('scroll-area').scrollTop = 0;
+        document.getElementById('nav-area').style.display = 'flex'; document.getElementById('scroll-area').scrollTop = 0;
     }
 
     function revealAnswer() { 
         document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block';
-        document.getElementById('answer-section').style.display = 'block'; 
-        document.getElementById('grade-area').style.display = 'flex';
+        document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex';
     }
 
     function moveCard(d) { let n = currentIndex + d; if(n >= 0 && n < activeDeck.length) { currentIndex = n; saveCurrentProgress(); showCard(); } }
@@ -476,6 +550,7 @@
         if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0 };
         data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5;
         data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        triggerSync(); // 🔥 학습 시 동기화
         if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
     }
 
@@ -514,7 +589,6 @@
                     li.className = 'tree-folder';
                     const head = document.createElement('div'); head.className = 'tree-header';
                     if (currentDeckName === item._path) head.classList.add('active');
-                    
                     head.innerHTML = `<div class="folder-title">📂 ${k}</div> <button class="play-btn">▶ 전체</button>`;
                     head.onclick = () => { li.querySelector('.tree-children').classList.toggle('open'); };
                     head.querySelector('.play-btn').onclick = (e) => { e.stopPropagation(); selectDeckGroup(item._path + '__'); };
@@ -539,7 +613,6 @@
         const overlay = document.querySelector('.sidebar-overlay');
         const isOpen = sidebar.classList.toggle('open'); 
         overlay.classList.toggle('open');
-        
         if (isOpen) {
             setTimeout(() => {
                 const activeEl = document.querySelector('.active');
@@ -555,6 +628,7 @@
         const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
         const p = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
         p[key] = currentIndex; localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(p));
+        triggerSync(); // 🔥 위치 저장 시 동기화
     }
     function loadProgress() {
         const key = `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
@@ -566,6 +640,7 @@
         const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
         if(!data[id]) data[id] = { correct: 0, total: 0 };
         data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        triggerSync(); // 🔥 태그 변경 시 동기화
         updateIconsUI(data[id]);
     }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
