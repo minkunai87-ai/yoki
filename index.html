@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.60 Local Final)</title>
+<title>나만의 안키 (v10.61 Filename Fix)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -142,7 +142,7 @@
             <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
             <button class="refresh-btn" style="margin-top:15px; border-color:#555;" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.60 (Local Final)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.61 (Filename Fix)</div>
     </div>
 
     <div class="header-container">
@@ -504,7 +504,24 @@
     function openEditModal(e) { e.stopPropagation(); const c = activeDeck[currentIndex]; document.getElementById('edit-q').value=c.q; document.getElementById('edit-a').value=c.a; document.getElementById('edit-modal').style.display='flex'; }
     function closeEditModal() { document.getElementById('edit-modal').style.display='none'; }
     function saveEdit() { const c = activeDeck[currentIndex]; c.q = document.getElementById('edit-q').value; c.a = document.getElementById('edit-a').value; closeEditModal(); showCard(); }
-    function exportData() { const blob = new Blob([JSON.stringify(localStorage)], {type:'application/json'}); const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='anki_backup.json'; a.click(); }
+    
+    // 🔥 [Fix] 자동 파일명 생성 로직 (yoki_YYYYMMDDHHMM.json)
+    function exportData() { 
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const fileName = `yoki_${year}${month}${day}${hours}${minutes}.json`;
+
+        const blob = new Blob([JSON.stringify(localStorage)], {type:'application/json'}); 
+        const a = document.createElement('a'); 
+        a.href=URL.createObjectURL(blob); 
+        a.download=fileName; 
+        a.click(); 
+    }
+    
     function importData(input) { const reader = new FileReader(); reader.onload = e => { const data = JSON.parse(e.target.result); Object.keys(data).forEach(k => localStorage.setItem(k, data[k])); location.reload(); }; reader.readAsText(input.files[0]); }
 </script>
 </body>
