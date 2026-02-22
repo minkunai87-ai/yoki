@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.65 Title Fix)</title>
+<title>나만의 안키 (v10.66 Order Sync Fix)</title>
 <style>
     /* 기본 테마 유지 (v10.61) */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -171,7 +171,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.65 (Title Fix)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.66 (Order Sync Fix)</div>
     </div>
 
     <div class="header-container">
@@ -305,9 +305,11 @@
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
     
-    // 저장소 키
+    // 저장소 키 (v10.61 호환)
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
+    const STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; // 🔥 [Fix] 순서 완벽 복구용 키
+    
     const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순' };
 
     // Firebase 관련
@@ -413,11 +415,13 @@
     async function performFirebaseBackup(isAuto) {
         updateCloudIcon('active');
         const now = Date.now();
+        // 🔥 [Fix] activeIds 추가로 저장!
         const data = { 
             stats: localStorage.getItem(STORAGE_KEY_STATS), 
             progress: localStorage.getItem(STORAGE_KEY_PROGRESS), 
             lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK), 
             filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE),
+            activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS),
             timestamp: now 
         };
         
@@ -488,6 +492,7 @@
             if(targetData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, targetData.progress);
             if(targetData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, targetData.lastDeck);
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
+            if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); // 🔥 [Fix] 배열 순서 복구
             
             location.reload();
         } catch(e) { document.getElementById('fb-list-ui').innerHTML = `<div style="padding:20px; text-align:center; color:#fa5252;">복구 중 에러가 발생했습니다.</div>`; }
@@ -538,10 +543,11 @@
         highlightFilter();
 
         if (last) {
-            if (library[last]) selectDeck(last);
-            else selectDeckGroup(last + '__'); 
+            // 🔥 [Fix] initApp() 실행 시(새로고침 시) isRestore 모드 = true 로 실행하여 순서표를 얼려둠
+            if (library[last]) selectDeck(last, true);
+            else selectDeckGroup(last + '__', true); 
         } else if (Object.keys(library).length) {
-            selectDeck(Object.keys(library)[0]);
+            selectDeck(Object.keys(library)[0], false);
         }
     }
 
@@ -589,17 +595,52 @@
         return wrap;
     }
 
-    function applyFilterAndSort() {
+    // 🔥 [Fix] 새로고침 시 완벽한 순서 & 위치 복구 로직
+    function applyFilterAndSort(isRestore = false) {
         if(!currentDeckName) return;
         const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        
+        // 1. 만약 새로고침(isRestore) 상태라면, 예전에 저장해둔 카드 고유 번호표를 불러옵니다.
+        if (isRestore) {
+            const savedIdsStr = localStorage.getItem(STORAGE_KEY_ACTIVE_IDS);
+            if (savedIdsStr) {
+                try {
+                    const savedIds = JSON.parse(savedIdsStr);
+                    if (Array.isArray(savedIds) && savedIds.length > 0) {
+                        const cardMap = new Map();
+                        originalDeck.forEach(c => cardMap.set(c.id, c));
+                        activeDeck = [];
+                        savedIds.forEach(id => {
+                            if (cardMap.has(id)) activeDeck.push(cardMap.get(id));
+                        });
+                        
+                        if (activeDeck.length > 0) {
+                            currentIndex = loadProgress();
+                            if(currentIndex >= activeDeck.length) currentIndex = 0;
+                            updateFilterStatusUI(); renderDeckTree(); showCard();
+                            return; // 복구 완료! 아래의 재정렬 로직을 건너뜁니다.
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+
+        // 2. 만약 직접 필터나 정렬 버튼을 눌렀다면, 새로 리스트를 짜고 정렬합니다.
         let filtered = [...originalDeck];
         if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
-        if(currentSortMode === 'wrong') filtered.sort((a,b) => {
-            const sA = stats[a.id] || {correct:0, total:0}, sB = stats[b.id] || {correct:0, total:0};
-            const rA = sA.total === 0 ? 1 : (sA.correct / sA.total), rB = sB.total === 0 ? 1 : (sB.correct / sB.total);
-            return rA - rB;
-        });
-        activeDeck = filtered; currentIndex = loadProgress();
+        if(currentSortMode === 'wrong') {
+            filtered.sort((a,b) => {
+                const sA = stats[a.id] || {correct:0, total:0}, sB = stats[b.id] || {correct:0, total:0};
+                const rA = sA.total === 0 ? 1 : (sA.correct / sA.total), rB = sB.total === 0 ? 1 : (sB.correct / sB.total);
+                return rA - rB;
+            });
+        }
+        activeDeck = filtered; 
+        
+        // 3. 방금 짜여진 새로운 배열 순서를 localStorage에 박제(고정)해둡니다.
+        localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => c.id)));
+        
+        currentIndex = loadProgress();
         if(currentIndex >= activeDeck.length) currentIndex = 0;
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
@@ -610,9 +651,9 @@
         document.getElementById('filter-status-text').innerText = `${sortText} & ${filterText}`;
     }
 
-    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
-    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
-    function resetFilters() { currentFilterMode = 'default'; currentSortMode = 'original'; saveFilterState(); highlightFilter(); applyFilterAndSort(); }
+    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
+    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
+    function resetFilters() { currentFilterMode = 'default'; currentSortMode = 'original'; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
     
     function saveFilterState() {
         const state = JSON.stringify({ filter: currentFilterMode, sort: currentSortMode });
@@ -628,26 +669,24 @@
 
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
-    // 🔥 [Fix] 덱 타이틀에 이름 띄우기
-    function selectDeck(name) { 
+    // 🔥 [Fix] 수동 덱 이동시엔 isRestore = false 로 넘겨 배열을 새로 생성
+    function selectDeck(name, isRestore = false) { 
         currentDeckName = name; originalDeck = library[name]; 
         localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
         document.getElementById('deck-title-text').innerText = name.split('__').pop();
-        applyFilterAndSort();
-        isDataChanged = true; checkAutoBackup();
+        applyFilterAndSort(isRestore);
+        if(!isRestore) { isDataChanged = true; checkAutoBackup(); }
     }
 
-    // 🔥 [Fix] 그룹 덱 타이틀에 이름 띄우기
-    function selectDeckGroup(prefix) {
+    function selectDeckGroup(prefix, isRestore = false) {
         let merged = [];
         Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) merged = merged.concat(library[key]); });
         if (!merged.length) { alert("하위 덱이 없습니다."); return; }
         currentDeckName = prefix.replace(/__$/, ''); originalDeck = merged;
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         document.getElementById('deck-title-text').innerText = currentDeckName.split('__').pop() + " (전체)";
-        applyFilterAndSort();
-        toggleMenu();
-        isDataChanged = true; checkAutoBackup();
+        applyFilterAndSort(isRestore);
+        if(!isRestore) { toggleMenu(); isDataChanged = true; checkAutoBackup(); }
     }
 
     function showCard() {
@@ -770,12 +809,15 @@
         isDataChanged = true; checkAutoBackup();
     }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
+    
+    // 🔥 검색 시 검색 취소하면 기존 순서 그대로 복구!
     function filterCards() { 
         const q = document.getElementById('search-input').value.toLowerCase();
-        if(!q) { applyFilterAndSort(); return; }
+        if(!q) { applyFilterAndSort(true); return; } // 검색어 지우면 이전 고정 배열 복구
         activeDeck = originalDeck.filter(c => c.q.toLowerCase().includes(q) || c.a.toLowerCase().includes(q));
         currentIndex = 0; showCard();
     }
+    
     const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
     function openEditModal(e) { e.stopPropagation(); const c = activeDeck[currentIndex]; document.getElementById('edit-q').value=c.q; document.getElementById('edit-a').value=c.a; document.getElementById('edit-modal').style.display='flex'; }
     function closeEditModal() { document.getElementById('edit-modal').style.display='none'; }
