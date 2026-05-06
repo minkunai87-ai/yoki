@@ -5,14 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.68 Number Sort)</title>
+<title>나만의 안키 (v10.69 Bug Fix)</title>
 <style>
-    /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
     
-    /* 헤더 */
     .header-container { background: var(--surface); border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0; transition: all 0.3s ease; position: relative; }
     .header { padding: 0 15px; padding-top: calc(env(safe-area-inset-top) + 15px); padding-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
     .header-left { display: flex; gap: 15px; align-items: center; }
@@ -21,7 +19,6 @@
     .header-title { font-weight: bold; font-size: 1.1rem; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
     .filter-status-text { font-size: 0.75rem; color: var(--primary); margin-top: 2px; opacity: 0.9; white-space: nowrap; font-weight: bold; }
 
-    /* 🔥 불꽃 아이콘 UI */
     .cloud-icon { font-size: 0.8rem; opacity: 0.5; transition: 0.3s; }
     .cloud-icon.active { color: #ffd43b; opacity: 1; animation: spin 1s infinite linear; }
     .cloud-icon.done { color: #40c057; opacity: 1; }
@@ -33,7 +30,6 @@
     .filter-toggle-btn { color: var(--primary); } 
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
 
-    /* 필터 바 */
     .filter-bar { width: 100%; background: var(--surface); display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-height: 0; opacity: 0; overflow-y: hidden; transition: all 0.3s ease-in-out; padding: 0 15px; border-bottom: 0px solid var(--border); }
     .filter-bar.open { max-height: 65px; opacity: 1; padding: 12px 15px; border-bottom: 1px solid var(--border); }
     .filter-bar::-webkit-scrollbar { display: none; }
@@ -45,7 +41,6 @@
     .filter-chip.reset-chip { color: #ff8787; border-color: #ff8787; }
     .filter-chip.reset-chip:active { background: #fa5252; color: white; }
 
-    /* 사이드바 */
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
@@ -72,7 +67,6 @@
     .play-btn { background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; margin-left: 8px; flex-shrink: 0; }
     .del-btn { background: none; border: none; color: var(--text-sub); font-weight: bold; padding: 0 5px; cursor: pointer; font-size: 1rem; }
 
-    /* 버튼 스타일 */
     .btn-sub { width: 100%; padding: 10px; border-radius: 8px; background: var(--input-bg); color: var(--text-sub); border: 1px solid var(--border); margin-top: 5px; cursor: pointer; text-align: left; font-size: 0.85rem; font-weight: bold; }
     .btn-cloud { width: 100%; padding: 12px; border-radius: 8px; background: #2b1f11; color: #fab005; border: 1px solid #fab005; font-weight: bold; cursor: pointer; margin-top: 15px; text-align: center; }
     .btn-refresh { width: 100%; padding: 12px; margin-top: 15px; border-radius: 8px; background: #343a40; color: #e9ecef; border: 1px solid var(--border); font-weight: bold; cursor: pointer; }
@@ -80,7 +74,6 @@
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
     .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
     
-    /* 줌 관련 CSS */
     .card-scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
     .zoom-content { padding: 25px 20px; min-height: 100%; width: 100%; transform-origin: 0 0; will-change: transform; }
     
@@ -124,7 +117,6 @@
 
     .click-guide { text-align: center; color: var(--text-sub); font-size: 0.9rem; margin-top: 40px; cursor: pointer; padding: 30px; border: 2px dashed var(--border); border-radius: 12px; background: #181818; }
     
-    /* 모달 & 토스트 UI */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; display: none; align-items: center; justify-content: center; }
     .modal-content { background: var(--surface); width: 90%; max-width: 500px; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; border: 1px solid var(--border); }
     .edit-input { width: 100%; padding: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); border-radius: 8px; font-family: inherit; font-size: 1rem; resize: vertical; }
@@ -173,10 +165,9 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.68 (Number Sort)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.69 (Bug Fix)</div>
     </div>
 
-    <!-- 헤더 -->
     <div class="header-container">
         <div class="header">
             <div class="header-left">
@@ -197,15 +188,12 @@
             </div>
         </div>
         
-        <!-- 필터 바 -->
         <div class="filter-bar" id="filter-bar">
             <div class="filter-chip reset-chip" onclick="resetFilters()">🔄 초기화</div>
             <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
             <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">🔄 원래순</div>
             <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">🔥 오답순</div>
-            <!-- 🔥 [v10.68] 번호순 정렬 버튼 추가 -->
             <div class="filter-chip sort-chip" id="sort-number" onclick="setSortMode('number')">🔢 번호순</div>
-            
             <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
             <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
             <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
@@ -264,7 +252,6 @@
         </div>
     </div>
 
-    <!-- 편집 모달 -->
     <div class="modal-overlay" id="edit-modal">
         <div class="modal-content">
             <textarea id="edit-q" class="edit-input" style="min-height: 80px;"></textarea>
@@ -276,7 +263,6 @@
         </div>
     </div>
 
-    <!-- 파이어베이스 모달 -->
     <div class="modal-overlay" id="fb-modal">
         <div class="modal-content">
             <div style="font-weight:bold; font-size:1.2rem; color:var(--text);">🔥 파이어베이스 백업 센터</div>
@@ -315,22 +301,17 @@
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
     
-    // 저장소 키
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
-    const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
-    const STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
+    const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state', STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
     
-    // 🔥 [v10.68] 모드 이름 추가
     const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
 
-    // Firebase 관련
     const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
     let ghRepoToken = localStorage.getItem('gh_repo_token') || '';
     let lastBackupTime = 0;
     const BACKUP_INTERVAL = 10 * 60 * 1000; 
     let isDataChanged = false;
 
-    // 알림 함수
     function showToast(msg, type = 'normal') {
         const toast = document.getElementById('toast');
         toast.innerText = msg;
@@ -341,7 +322,6 @@
         setTimeout(() => { toast.classList.remove('show'); }, 3000);
     }
 
-    // 줌 관련 변수
     const scrollContainer = document.getElementById('scroll-area');
     const zoomContent = document.getElementById('zoom-content');
     let scale = 1, panning = false, pointX = 0, pointY = 0, startX = 0, startY = 0, lastTap = 0, startDist = 0, startScale = 1;
@@ -519,6 +499,7 @@
         } catch(e) {}
     }
 
+    // 🔥 [Fix 1] 누락되는 카드 복구 (멀티라인 완벽 파서 부활)
     async function autoScanGitHub() {
         document.getElementById('loading').style.display = 'block';
         const headers = ghRepoToken ? { 'Authorization': `token ${ghRepoToken}` } : {};
@@ -542,6 +523,30 @@
         document.getElementById('loading').style.display = 'none';
     }
 
+    function parseAnkiRawData(str) {
+        const rows = []; let currentRow = []; let currentCell = ''; let cursor = 0; let inQuote = false;
+        while (cursor < str.length) {
+            const char = str[cursor]; const nextChar = str[cursor + 1];
+            if (inQuote) { if (char === '"' && nextChar === '"') { currentCell += '"'; cursor += 2; } else if (char === '"') { inQuote = false; cursor++; } else { currentCell += char; cursor++; } }
+            else { if (char === '"') { inQuote = true; cursor++; } else if (char === '\t') { currentRow.push(currentCell); currentCell = ''; cursor++; } else if (char === '\n' || char === '\r') { if (char === '\r' && nextChar === '\n') cursor++; currentRow.push(currentCell); if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) { rows.push(currentRow); } currentRow = []; currentCell = ''; cursor++; } else { currentCell += char; cursor++; } }
+        }
+        if (currentRow.length > 0 || currentCell !== '') { currentRow.push(currentCell); rows.push(currentRow); }
+        return rows;
+    }
+
+    function processAnkiText(text, filename) {
+        const rows = parseAnkiRawData(text);
+        let deck = filename.replace('.txt', '');
+        rows.forEach(fields => {
+            if (fields.length > 0 && fields[0].startsWith('#')) return; 
+            let deckNameInRow = null; let q = "", a = "";
+            if (fields.length >= 3) { deckNameInRow = fields[0].replace(/::/g, '__'); q = fields[1]; a = fields.slice(2).join('<br>'); } 
+            else { deckNameInRow = deck; if (fields.length === 2) { q = fields[0]; a = fields[1]; } else if (fields.length > 0) { q = fields[0]; a = fields.slice(1).join('<br>'); } }
+            if(!q) return;
+            pushCard({ deck: deckNameInRow, q, a });
+        });
+    }
+
     function initApp() {
         renderDeckTree();
         const last = localStorage.getItem(STORAGE_KEY_LAST_DECK);
@@ -558,24 +563,6 @@
         } else if (Object.keys(library).length) {
             selectDeck(Object.keys(library)[0], false);
         }
-    }
-
-    function processAnkiText(text, filename) {
-        const lines = text.split(/\r?\n/);
-        let deck = filename.replace('.txt', '');
-        let currentCard = null;
-        lines.forEach(line => {
-            if(!line.trim()) return;
-            const parts = line.split('\t'); 
-            if(parts.length >= 2) {
-                if(currentCard) pushCard(currentCard);
-                let dName = deck, q = parts[0], a = parts[1];
-                if(parts.length >= 3) { dName = parts[0].replace(/::/g, '__'); q = parts[1]; a = parts.slice(2).join('<br>'); }
-                else if(parts.length === 2) { q = parts[0]; a = parts[1]; }
-                currentCard = { deck: dName, q: q, a: a };
-            } else { if(currentCard) currentCard.a += "<br>" + line; }
-        });
-        if(currentCard) pushCard(currentCard);
     }
 
     function pushCard(c) {
@@ -604,11 +591,22 @@
         return wrap;
     }
 
-    // 🔥 [v10.68] 텍스트에서 숫자만 추출하는 헬퍼 함수
+    // 🔥 [Fix 2] 정렬 버그 수정 (title 안에 있는 숫자부터 추출)
     function extractNumber(text) {
-        // 정규표현식: 문자열 맨 앞부분에서 나오는 첫 번째 연속된 숫자 덩어리 추출
-        const match = text.replace(/<[^>]*>?/gm, '').match(/^\s*(\d+)/); 
-        return match ? parseInt(match[1], 10) : 999999; // 숫자가 없으면 맨 뒤로 보냄
+        // 1. title="..." 속성 안에서 숫자 찾기 (이미지 태그 대응)
+        const titleMatch = text.match(/title\s*=\s*["']\s*(\d+)/i);
+        if (titleMatch) return parseInt(titleMatch[1], 10);
+        
+        // 2. 텍스트 자체에서 첫 번째 숫자 찾기
+        const plainText = text.replace(/<[^>]*>?/gm, '').trim();
+        const textMatch = plainText.match(/^(\d+)/);
+        if (textMatch) return parseInt(textMatch[1], 10);
+        
+        // 3. 문장 중간에라도 숫자가 있으면 가져오기
+        const anyMatch = text.match(/(\d+)/);
+        if (anyMatch) return parseInt(anyMatch[1], 10);
+        
+        return 999999;
     }
 
     function applyFilterAndSort(isRestore = false) {
@@ -642,7 +640,6 @@
         let filtered = [...originalDeck];
         if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
         
-        // 🔥 [v10.68] 번호순 정렬 로직 추가
         if(currentSortMode === 'wrong') {
             filtered.sort((a,b) => {
                 const sA = stats[a.id] || {correct:0, total:0}, sB = stats[b.id] || {correct:0, total:0};
@@ -651,7 +648,6 @@
             });
         } else if (currentSortMode === 'number') {
             filtered.sort((a,b) => {
-                // 질문(q) 또는 답변(a) 텍스트의 앞부분에서 숫자 추출하여 비교
                 const numA = extractNumber(a.q) !== 999999 ? extractNumber(a.q) : extractNumber(a.a);
                 const numB = extractNumber(b.q) !== 999999 ? extractNumber(b.q) : extractNumber(b.a);
                 return numA - numB;
