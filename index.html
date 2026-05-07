@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.72 Final Fix)</title>
+<title>나만의 안키 (v10.73 Real Final Sort Fix)</title>
 <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
@@ -165,7 +165,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.72 (Final Fix)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.73 (Real Final Sort Fix)</div>
     </div>
 
     <div class="header-container">
@@ -431,27 +431,22 @@
         return rows;
     }
 
-    // 🔥 [복구 최후의 보루] 옛날 데이터를 강제로 찾아내는 로직
     function resolveCardId(q, stats) {
         const currentId = cyrb53(q);
         if (stats[currentId]) return currentId;
 
-        // 1. OCR 텍스트(title) 제거한 순정 코드 테스트
         const strippedQ = q.replace(/\s*title\s*=\s*["'][^"']*["']/gi, '');
         const strippedId = cyrb53(strippedQ);
         if (stats[strippedId]) return strippedId;
 
-        // 2. 과거 구버전 앱에서 쌍따옴표("")를 안 벗기고 그대로 해시했던 포맷 테스트
         const naiveFormat = '"' + q.replace(/"/g, '""') + '"';
         const naiveId = cyrb53(naiveFormat);
         if (stats[naiveId]) return naiveId;
 
-        // 3. title 제거 + 쌍따옴표 안 벗긴 포맷 (가장 유력한 기존 데이터 형태!)
         const strippedNaive = '"' + strippedQ.replace(/"/g, '""') + '"';
         const strippedNaiveId = cyrb53(strippedNaive);
         if (stats[strippedNaiveId]) return strippedNaiveId;
 
-        // 4. 최후의 수단: 이미지 파일명만 빼서 모든 경우의 수 대입
         const fnameMatch = q.match(/src\s*=\s*["']?([^"'>\s]+)["']?/i);
         if(fnameMatch) {
             let fname = fnameMatch[1];
@@ -465,7 +460,6 @@
                 if(stats[cyrb53(t)]) return cyrb53(t);
             }
         }
-        
         return currentId;
     }
 
@@ -516,17 +510,28 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [정렬 버그 완벽 수정] 어떤 문자가 앞에 있든 싹 무시하고 숫자만 빼오기
-    function extractNumber(text) {
-        // 1. title 속성 안에서 숫자 찾기 (영문자, 괄호 등 싹 다 무시하고 첫 번째 숫자 덩어리만 쏙!)
-        const titleMatch = text.match(/title\s*=\s*["']([^"']*)["']/i);
+    // 🔥 [핵심 1] 진짜 테마 번호만 뽑아오기
+    function extractNumber(card) {
+        // 1. 정답(뒷면)에 이미지가 2개 이상일 때, 두 번째 이미지의 src 속성에서 파일명(테마 번호) 추출
+        const imgTags = card.a.match(/<img[^>]+>/gi);
+        if (imgTags && imgTags.length >= 2) {
+            const secondImg = imgTags[1];
+            const srcMatch = secondImg.match(/src\s*=\s*["']?([^"'>\s]+)["']?/i);
+            if (srcMatch && srcMatch[1]) {
+                const numMatch = srcMatch[1].match(/\d+/);
+                if (numMatch) return parseInt(numMatch[0], 10);
+            }
+        }
+        
+        // 2. 위에서 못 찾으면 앞면(질문) title에서 추출
+        const titleMatch = card.q.match(/title\s*=\s*["']([^"']*)["']/i);
         if (titleMatch && titleMatch[1]) {
             const match = titleMatch[1].match(/\d+/);
             if (match) return parseInt(match[0], 10);
         }
         
-        // 2. 일반 텍스트에서 찾기
-        const plainText = text.replace(/<[^>]*>?/gm, '').trim();
+        // 3. 그것도 없으면 앞면 순수 텍스트에서 추출
+        const plainText = card.q.replace(/<[^>]*>?/gm, '').trim();
         const textMatch = plainText.match(/\d+/);
         if (textMatch) return parseInt(textMatch[0], 10);
         
@@ -560,9 +565,10 @@
                 return rA - rB;
             });
         } else if (currentSortMode === 'number') {
+            // 🔥 [핵심 2] 이제 개별 텍스트(a.q, a.a)가 아니라 카드 전체(a, b)를 통째로 넘겨서 분석시킵니다.
             filtered.sort((a,b) => {
-                const numA = extractNumber(a.q) !== 999999 ? extractNumber(a.q) : extractNumber(a.a);
-                const numB = extractNumber(b.q) !== 999999 ? extractNumber(b.q) : extractNumber(b.a);
+                const numA = extractNumber(a);
+                const numB = extractNumber(b);
                 if (numA === numB) return a.id - b.id; // 번호가 같으면 순서 유지
                 return numA - numB;
             });
