@@ -511,36 +511,48 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [최종 정렬 해결] OCR 쓰레기 번호 싹 무시하고 무조건 첫 번째 문제 번호만 집어오기
+    // 🔥 [최종 완성형 정렬 공식] 브라우저 DOM 파싱으로 숨은 title 속성까지 완벽하게 추출!
     function extractNumber(card) {
+        // 브라우저의 강력한 파싱 기능으로 이미지 요소들을 싹 다 긁어옴
+        let div = document.createElement('div');
+        div.innerHTML = card.q;
+        let imgs = div.querySelectorAll('img');
+        
         let titles = [];
-        const titleRegex = /title\s*=\s*["']([^"']*)["']/gi;
-        let match;
-        while ((match = titleRegex.exec(card.q)) !== null) {
-            if (match[1].trim().length > 0) titles.push(match[1].trim());
+        for(let i=0; i < imgs.length; i++) {
+            let t = imgs[i].getAttribute('title');
+            if(t && t.trim()) titles.push(t.trim());
         }
         
-        let textToSearch = titles.join(" ") + " " + card.q.replace(/<[^>]*>?/gm, ' ');
-        let prefix = textToSearch.substring(0, 50); // 맨 앞부분 50글자만 스캔 (문제 번호는 무조건 이 안에 있음)
+        let targetText = "";
+        // 이미지가 2개면 무조건 뒷부분(진짜 문제) 타이틀 사용! (공통 지문 회피)
+        if (titles.length >= 2) targetText = titles[titles.length - 1]; 
+        else if (titles.length === 1) targetText = titles[0];
+        else targetText = div.textContent.trim();
         
-        // 1단계: 가장 흔한 OCR 찌꺼기 71, 21, 9, 1 등을 빈칸으로 치환해서 증발시킴
-        prefix = prefix.replace(/(^|\D)(?:21|71|9|1|2|7)\s+(\d{1,2})(\D|$)/g, '$1$2$3');
-        prefix = prefix.replace(/(^|\D)(?:21|71)(\d{2})(\D|$)/g, '$1$2$3');
+        if (!targetText) return 999999;
         
-        // 2단계: 청소된 텍스트에서 '첫 번째'로 등장하는 숫자를 무조건 캡처
-        let numMatches = prefix.match(/\d+/g);
-        if (numMatches && numMatches.length > 0) {
-            return parseInt(numMatches[0], 10);
-        }
+        // 너무 뒤에 있는 숫자는 오답 노이즈일 수 있으므로 앞부분만 스캔
+        let prefix = targetText.substring(0, 40);
         
-        // 만약 50글자 안에 없다면 전체 텍스트에서 검색
-        numMatches = textToSearch.match(/\d+/g);
-        if (numMatches && numMatches.length > 0) {
-            return parseInt(numMatches[0], 10);
-        }
+        // 1. N번대 카드 최우선 처리 (N1, N2 등) -> 무조건 맨 앞으로 오도록 마이너스 번호 부여 (-999번)
+        let nMatch = prefix.match(/N\s*(\d+)/i);
+        if (nMatch) return parseInt(nMatch[1], 10) - 1000;
+
+        // 2. 가장 악질적인 OCR 찌꺼기 완벽 제거 공식! 
+        // 7108, 2148, 1 23, 9 01 등에서 앞에 붙은 쓸데없는 숫자를 투명인간 취급하고 진짜 번호만 남김
+        prefix = prefix.replace(/^([^\dN]*)(?:21|71|9|1|2|7|o|O|Q|©)\s+(\d{1,2})\b/i, '$1$2'); // 띄어쓰기 된 노이즈 제거
+        prefix = prefix.replace(/^([^\dN]*)(?:21|71)(\d{2})\b/i, '$1$2'); // 붙어있는 7108 같은 노이즈 제거
+
+        // 3. 깨끗해진 텍스트에서 '첫 번째'로 등장하는 연속된 숫자를 캡처
+        let nums = prefix.match(/\d+/g);
+        if (nums && nums.length > 0) return parseInt(nums[0], 10);
         
-        // 아무것도 없으면 맨 끝으로
-        return 999999;
+        // 4. 만약 앞부분에 없다면 전체 텍스트에서 한 번 더 스캔
+        nums = targetText.match(/\d+/g);
+        if (nums && nums.length > 0) return parseInt(nums[0], 10);
+        
+        return 999999; // 아무것도 못 찾으면 맨 뒤로
     }
 
     function applyFilterAndSort(isRestore = false) {
@@ -573,7 +585,7 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a);
                 const numB = extractNumber(b);
-                if (numA === numB) return a.id - b.id; // 번호가 같으면 순서 유지
+                if (numA === numB) return a.id - b.id; // 번호가 같으면 원래 순서 유지
                 return numA - numB;
             });
         }
