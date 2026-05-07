@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.76 Simple Sort)</title>
+<title>나만의 안키 (v10.77 Final Number Sort)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -166,7 +166,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.76 (Simple Sort)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.77 (Final Number Sort)</div>
     </div>
 
     <div class="header-container">
@@ -488,10 +488,14 @@
         if(savedFilter.filter) currentFilterMode = savedFilter.filter;
         if(savedFilter.sort) currentSortMode = savedFilter.sort;
         updateFilterStatusUI(); highlightFilter();
+        
+        // 초기 로딩 시 무조건 데이터를 새로고침하도록 변경 (이전처럼 이상한 상태로 멈춰있는 오류 방지)
         if (last) {
-            if (library[last]) selectDeck(last, true);
-            else selectDeckGroup(last + '__', true); 
-        } else if (Object.keys(library).length) { selectDeck(Object.keys(library)[0], false); }
+            if (library[last]) selectDeck(last, false);
+            else selectDeckGroup(last + '__', false); 
+        } else if (Object.keys(library).length) { 
+            selectDeck(Object.keys(library)[0], false); 
+        }
     }
 
     function createDOM(rawText, isAnswer) {
@@ -511,40 +515,41 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [v10.76 최종 정렬 공식] 카드 뒷면(정답)에 적어둔 순수 숫자만 추출!
+    // 🔥 [v10.77 궁극의 정렬 공식] 진짜 무조건 맨 마지막 숫자만 완벽하게 가져옴
     function extractNumber(card) {
-        // 1. 카드 뒷면(card.a)의 HTML 태그(이미지 등)를 투명인간 취급하여 싹 지움
-        const plainText = card.a.replace(/<[^>]*>?/gm, '').trim();
+        // 1. 카드 뒷면(정답)의 <태그>들을 모조리 공백으로 치환하여 투명 취급
+        let text = card.a.replace(/<[^>]*>?/gm, ' ');
         
-        // 2. 남은 글자 중에서 숫자를 찾음 (음수 기호도 인식하여 N번 카드는 -1 등 사용 가능)
-        const matches = plainText.match(/-?\d+/g);
+        // 2. &nbsp; 같은 HTML 특수 엔티티들도 공백으로 싹 치환
+        text = text.replace(/&[a-zA-Z0-9#]+;/g, ' ');
         
-        // 3. 숫자가 발견되면, 가장 마지막에 있는 숫자를 반환 (맨 뒤에 적을 것이므로)
+        // 3. 남은 문자열에서 모든 '숫자(N이나 - 기호 포함)' 덩어리를 찾아냄
+        let matches = text.match(/(?:N|-)?\d+/gi);
+        
         if (matches && matches.length > 0) {
-            return parseInt(matches[matches.length - 1], 10);
+            // 4. 발견된 모든 숫자 덩어리 중에서 "무조건 제일 마지막(맨 뒤)"에 있는 것을 선택
+            let lastStr = matches[matches.length - 1].toUpperCase();
+            
+            // 만약 사용자가 맨 뒤에 'N1' 이런 식으로 적었다면, 무조건 맨 앞으로 보내기 위해 -1000을 해줌 (-999)
+            if (lastStr.startsWith('N')) {
+                return parseInt(lastStr.replace('N', ''), 10) - 1000;
+            }
+            
+            // 일반 숫자면 그냥 그대로 반환
+            return parseInt(lastStr, 10);
         }
         
-        // 4. 만약 숫자를 안 적어둔 카드가 있다면 맨 끝으로 보냄
+        // 숫자가 아예 안 적힌 카드는 무조건 꼴등(999999번)으로 밀어버림
         return 999999;
     }
 
     function applyFilterAndSort(isRestore = false) {
         if(!currentDeckName) return;
         const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        if (isRestore) {
-            const savedIdsStr = localStorage.getItem(STORAGE_KEY_ACTIVE_IDS);
-            if (savedIdsStr) {
-                try {
-                    const savedIds = JSON.parse(savedIdsStr);
-                    const cardMap = new Map(); originalDeck.forEach(c => cardMap.set(c.id, c));
-                    activeDeck = []; savedIds.forEach(id => { if (cardMap.has(id)) activeDeck.push(cardMap.get(id)); });
-                    if (activeDeck.length > 0) {
-                        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
-                        updateFilterStatusUI(); renderDeckTree(); showCard(); return; 
-                    }
-                } catch(e) {}
-            }
-        }
+        
+        // 🔥 예전 캐시 복구 기능(isRestore)을 완전히 비활성화시켰습니다. 
+        // 이제 파일을 바꾸고 새로고침하면 과거 순서를 불러오지 않고 무조건 즉각 반영됩니다!
+        
         let filtered = [...originalDeck];
         if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
         
@@ -558,12 +563,16 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a);
                 const numB = extractNumber(b);
-                if (numA === numB) return a.id - b.id; // 번호가 같으면 원래 순서 유지
+                if (numA === numB) return a.id - b.id; // 숫자가 똑같으면 원래 순서 유지
                 return numA - numB;
             });
         }
         activeDeck = filtered; localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => c.id)));
-        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
+        
+        // 현재 인덱스 위치 보정 (정렬이 바뀌어도 최대한 오류 안 나게)
+        currentIndex = loadProgress(); 
+        if(currentIndex >= activeDeck.length) currentIndex = 0;
+        
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
