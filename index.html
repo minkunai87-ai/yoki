@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.74 Perfect Sort)</title>
+<title>나만의 안키 (v10.75 Perfect Sort Fix)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -166,7 +166,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.74 (Perfect Sort)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.75 (Perfect Sort Fix)</div>
     </div>
 
     <div class="header-container">
@@ -511,48 +511,55 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [최종 완성형 정렬 공식] 브라우저 DOM 파싱으로 숨은 title 속성까지 완벽하게 추출!
+    // 🔥 [v10.75 최종 정렬 공식] 더 똑똑하고 강력하게 정렬
     function extractNumber(card) {
-        // 브라우저의 강력한 파싱 기능으로 이미지 요소들을 싹 다 긁어옴
+        let titles = [];
         let div = document.createElement('div');
         div.innerHTML = card.q;
         let imgs = div.querySelectorAll('img');
         
-        let titles = [];
         for(let i=0; i < imgs.length; i++) {
             let t = imgs[i].getAttribute('title');
             if(t && t.trim()) titles.push(t.trim());
         }
         
-        let targetText = "";
-        // 이미지가 2개면 무조건 뒷부분(진짜 문제) 타이틀 사용! (공통 지문 회피)
-        if (titles.length >= 2) targetText = titles[titles.length - 1]; 
-        else if (titles.length === 1) targetText = titles[0];
-        else targetText = div.textContent.trim();
+        // 텍스트 통합 검색
+        let textToSearch = titles.join(" ") + " " + div.textContent.trim();
+        if (!textToSearch.trim()) return 999999;
         
-        if (!targetText) return 999999;
+        // 문제 번호는 무조건 맨 앞 60글자 안에 있다고 가정하고 잘라냄
+        let prefix = textToSearch.substring(0, 60).trim();
         
-        // 너무 뒤에 있는 숫자는 오답 노이즈일 수 있으므로 앞부분만 스캔
-        let prefix = targetText.substring(0, 40);
-        
-        // 1. N번대 카드 최우선 처리 (N1, N2 등) -> 무조건 맨 앞으로 오도록 마이너스 번호 부여 (-999번)
-        let nMatch = prefix.match(/N\s*(\d+)/i);
+        // 1. N번대 카드 (N1, N2 등) -> 최우선으로 -1000번대 배치
+        // (단, 'N 18' 처럼 띄어쓰기 된 가짜 N은 무시함. '문'이 오인된 경우 방지)
+        let nMatch = prefix.match(/^[^\d]*N(\d+)/i); 
         if (nMatch) return parseInt(nMatch[1], 10) - 1000;
-
-        // 2. 가장 악질적인 OCR 찌꺼기 완벽 제거 공식! 
-        // 7108, 2148, 1 23, 9 01 등에서 앞에 붙은 쓸데없는 숫자를 투명인간 취급하고 진짜 번호만 남김
-        prefix = prefix.replace(/^([^\dN]*)(?:21|71|9|1|2|7|o|O|Q|©)\s+(\d{1,2})\b/i, '$1$2'); // 띄어쓰기 된 노이즈 제거
-        prefix = prefix.replace(/^([^\dN]*)(?:21|71)(\d{2})\b/i, '$1$2'); // 붙어있는 7108 같은 노이즈 제거
-
-        // 3. 깨끗해진 텍스트에서 '첫 번째'로 등장하는 연속된 숫자를 캡처
-        let nums = prefix.match(/\d+/g);
-        if (nums && nums.length > 0) return parseInt(nums[0], 10);
         
-        // 4. 만약 앞부분에 없다면 전체 텍스트에서 한 번 더 스캔
-        nums = targetText.match(/\d+/g);
-        if (nums && nums.length > 0) return parseInt(nums[0], 10);
+        // 2. 숫자가 포함된 모든 블록 찾기
+        let matches = [...prefix.matchAll(/\d+/g)];
+        if (matches.length === 0) return 999999;
         
-        return 999999; // 아무것도 못 찾으면 맨 뒤로
+        let firstNumStr = matches[0][0];
+        let firstNum = parseInt(firstNumStr, 10);
+        
+        // 3. 쪼개진 OCR 찌꺼기 완벽 필터링 (예: "1 12" -> 12번, "0 25" -> 25번)
+        // 첫 번째 숫자가 1자리 수이고, 바로 뒤 2칸 이내에 다른 숫자가 오면? 두 번째 숫자가 '진짜'입니다.
+        if (matches.length > 1) {
+            let secondNumStr = matches[1][0];
+            let dist = matches[1].index - (matches[0].index + firstNumStr.length);
+            if (firstNumStr.length === 1 && dist <= 2) {
+                return parseInt(secondNumStr, 10);
+            }
+        }
+        
+        // 4. 합쳐진 OCR 찌꺼기 완벽 필터링 (예: "7108" -> 8번, "2148" -> 48번)
+        // 3자리 이상의 숫자가 맨 앞에 오면, 맨 뒤의 2자리만 문제 번호로 잘라옵니다.
+        if (firstNumStr.length >= 3) {
+            return parseInt(firstNumStr.slice(-2), 10);
+        }
+        
+        // 아무런 찌꺼기도 없으면 원래 숫자 그대로 반환
+        return firstNum;
     }
 
     function applyFilterAndSort(isRestore = false) {
@@ -585,7 +592,7 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a);
                 const numB = extractNumber(b);
-                if (numA === numB) return a.id - b.id; // 번호가 같으면 원래 순서 유지
+                if (numA === numB) return a.id - b.id; // 번호가 같으면 순서 유지
                 return numA - numB;
             });
         }
