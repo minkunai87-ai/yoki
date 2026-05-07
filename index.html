@@ -5,14 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.70 Data Recovery)</title>
+<title>나만의 안키 (v10.71 Ultimate Fix)</title>
 <style>
     /* 기본 테마 유지 (v10.61) */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --primary: #4dabf7; --bg: #121212; --surface: #1e1e1e; --text: #e0e0e0; --text-sub: #a0a0a0; --border: #333333; --input-bg: #2c2c2c; --btn-hover: #383838; --sub-group-bg: #252525; }
     body { font-family: 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
     
-    /* 헤더 */
     .header-container { background: var(--surface); border-bottom: 1px solid var(--border); z-index: 20; flex-shrink: 0; transition: all 0.3s ease; position: relative; }
     .header { padding: 0 15px; padding-top: calc(env(safe-area-inset-top) + 15px); padding-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
     .header-left { display: flex; gap: 15px; align-items: center; }
@@ -21,7 +20,6 @@
     .header-title { font-weight: bold; font-size: 1.1rem; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
     .filter-status-text { font-size: 0.75rem; color: var(--primary); margin-top: 2px; opacity: 0.9; white-space: nowrap; font-weight: bold; }
 
-    /* 불꽃 아이콘 UI */
     .cloud-icon { font-size: 0.8rem; opacity: 0.5; transition: 0.3s; }
     .cloud-icon.active { color: #ffd43b; opacity: 1; animation: spin 1s infinite linear; }
     .cloud-icon.done { color: #40c057; opacity: 1; }
@@ -33,7 +31,6 @@
     .filter-toggle-btn { color: var(--primary); } 
     .counter { font-size: 0.85rem; font-weight: bold; color: var(--text-sub); background: var(--input-bg); padding: 5px 12px; border-radius: 15px; }
 
-    /* 필터 바 */
     .filter-bar { width: 100%; background: var(--surface); display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; max-height: 0; opacity: 0; overflow-y: hidden; transition: all 0.3s ease-in-out; padding: 0 15px; border-bottom: 0px solid var(--border); }
     .filter-bar.open { max-height: 65px; opacity: 1; padding: 12px 15px; border-bottom: 1px solid var(--border); }
     .filter-bar::-webkit-scrollbar { display: none; }
@@ -45,7 +42,6 @@
     .filter-chip.reset-chip { color: #ff8787; border-color: #ff8787; }
     .filter-chip.reset-chip:active { background: #fa5252; color: white; }
 
-    /* 사이드바 */
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
     .sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9998; display: none; }
@@ -72,7 +68,6 @@
     .play-btn { background: var(--primary); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; margin-left: 8px; flex-shrink: 0; }
     .del-btn { background: none; border: none; color: var(--text-sub); font-weight: bold; padding: 0 5px; cursor: pointer; font-size: 1rem; }
 
-    /* 버튼 스타일 */
     .btn-sub { width: 100%; padding: 10px; border-radius: 8px; background: var(--input-bg); color: var(--text-sub); border: 1px solid var(--border); margin-top: 5px; cursor: pointer; text-align: left; font-size: 0.85rem; font-weight: bold; }
     .btn-cloud { width: 100%; padding: 12px; border-radius: 8px; background: #2b1f11; color: #fab005; border: 1px solid #fab005; font-weight: bold; cursor: pointer; margin-top: 15px; text-align: center; }
     .btn-refresh { width: 100%; padding: 12px; margin-top: 15px; border-radius: 8px; background: #343a40; color: #e9ecef; border: 1px solid var(--border); font-weight: bold; cursor: pointer; }
@@ -80,7 +75,6 @@
     .main-container { flex: 1; display: flex; flex-direction: column; padding: 0; width: 100%; position: relative; overflow: hidden; background: var(--bg); }
     .card { background: var(--surface); width: 100%; height: 100%; max-width: none; border-radius: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
     
-    /* 줌 관련 CSS */
     .card-scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
     .zoom-content { padding: 25px 20px; min-height: 100%; width: 100%; transform-origin: 0 0; will-change: transform; }
     
@@ -124,7 +118,6 @@
 
     .click-guide { text-align: center; color: var(--text-sub); font-size: 0.9rem; margin-top: 40px; cursor: pointer; padding: 30px; border: 2px dashed var(--border); border-radius: 12px; background: #181818; }
     
-    /* 모달 & 토스트 UI */
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; display: none; align-items: center; justify-content: center; }
     .modal-content { background: var(--surface); width: 90%; max-width: 500px; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px; border: 1px solid var(--border); }
     .edit-input { width: 100%; padding: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); border-radius: 8px; font-family: inherit; font-size: 1rem; resize: vertical; }
@@ -173,7 +166,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.70 (Data Recovery)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.71 (Ultimate Fix)</div>
     </div>
 
     <div class="header-container">
@@ -307,7 +300,6 @@
     
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state', STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
-    
     const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
 
     const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
@@ -316,10 +308,12 @@
     const BACKUP_INTERVAL = 10 * 60 * 1000; 
     let isDataChanged = false;
 
+    // 🔥 [핵심 수정] 해시 생성 함수
+    const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
+
     function showToast(msg, type = 'normal') {
         const toast = document.getElementById('toast');
-        toast.innerText = msg;
-        toast.className = '';
+        toast.innerText = msg; toast.className = '';
         if(type === 'error') toast.classList.add('error');
         if(type === 'success') toast.classList.add('success');
         toast.classList.add('show');
@@ -331,128 +325,54 @@
     let scale = 1, panning = false, pointX = 0, pointY = 0, startX = 0, startY = 0, lastTap = 0, startDist = 0, startScale = 1;
     
     scrollContainer.addEventListener('touchstart', (e) => { 
-        if (e.touches.length === 2) { 
-            e.preventDefault(); panning = false; 
-            startDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); 
-            startScale = scale; 
-        } else if (e.touches.length === 1) { 
-            const now = new Date().getTime(); 
-            if (now - lastTap < 300) { e.preventDefault(); resetZoom(); } 
-            else { if (scale > 1) { panning = true; startX = e.touches[0].pageX - pointX; startY = e.touches[0].pageY - pointY; } } 
-            lastTap = now; 
-        } 
+        if (e.touches.length === 2) { e.preventDefault(); panning = false; startDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); startScale = scale; } 
+        else if (e.touches.length === 1) { const now = new Date().getTime(); if (now - lastTap < 300) { e.preventDefault(); resetZoom(); } else { if (scale > 1) { panning = true; startX = e.touches[0].pageX - pointX; startY = e.touches[0].pageY - pointY; } } lastTap = now; } 
     }, { passive: false });
     
     scrollContainer.addEventListener('touchmove', (e) => { 
-        if (e.touches.length === 2) { 
-            e.preventDefault(); 
-            const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); 
-            scale = Math.min(Math.max(1, startScale * (dist / startDist)), 4); 
-            updateTransform(); 
-        } else if (e.touches.length === 1 && panning && scale > 1) { 
-            e.preventDefault(); pointX = e.touches[0].pageX - startX; pointY = e.touches[0].pageY - startY; 
-            updateTransform(); 
-        } 
+        if (e.touches.length === 2) { e.preventDefault(); const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY); scale = Math.min(Math.max(1, startScale * (dist / startDist)), 4); updateTransform(); } 
+        else if (e.touches.length === 1 && panning && scale > 1) { e.preventDefault(); pointX = e.touches[0].pageX - startX; pointY = e.touches[0].pageY - startY; updateTransform(); } 
     }, { passive: false });
     
-    scrollContainer.addEventListener('touchend', (e) => { 
-        if (e.touches.length < 2) panning = false; 
-        if (scale < 1.1) resetZoom(); 
-    });
+    scrollContainer.addEventListener('touchend', (e) => { if (e.touches.length < 2) panning = false; if (scale < 1.1) resetZoom(); });
     
     function resetZoom() { scale = 1; pointX = 0; pointY = 0; updateTransform(); scrollContainer.style.overflowY = 'auto'; }
-    function updateTransform() { 
-        if (scale > 1) scrollContainer.style.overflow = 'hidden'; 
-        else scrollContainer.style.overflowY = 'auto'; 
-        zoomContent.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; 
-    }
+    function updateTransform() { if (scale > 1) scrollContainer.style.overflow = 'hidden'; else scrollContainer.style.overflowY = 'auto'; zoomContent.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; }
 
-    window.onload = async function() { 
-        await autoScanGitHub(); 
-        initApp();
-    };
+    window.onload = async function() { await autoScanGitHub(); initApp(); };
 
-    function openFirebaseSettings() {
-        document.getElementById('gh-token-input').value = ghRepoToken;
-        showAuthSection();
-        document.getElementById('fb-modal').style.display = 'flex';
-    }
-
-    function showAuthSection() { 
-        document.getElementById('fb-auth-section').style.display = 'block'; 
-        document.getElementById('fb-list-section').style.display = 'none'; 
-    }
-
-    function updateCloudIcon(status) { 
-        const icon = document.getElementById('cloud-icon'); 
-        if(!icon) return; 
-        icon.className = `cloud-icon ${status}`; 
-        icon.innerText = status === 'active' ? '🔄' : (status === 'error' ? '❌' : '🔥'); 
-    }
-
-    async function testFirebaseSync() {
-        document.getElementById('fb-modal').style.display = 'none';
-        ghRepoToken = document.getElementById('gh-token-input').value.trim();
-        localStorage.setItem('gh_repo_token', ghRepoToken); 
-        isDataChanged = true;
-        await performFirebaseBackup(false);
-    }
-
-    async function checkAutoBackup() { 
-        if(!isDataChanged) return; 
-        const now = Date.now(); 
-        if(now - lastBackupTime >= BACKUP_INTERVAL) { 
-            lastBackupTime = now; 
-            await performFirebaseBackup(true); 
-        } 
-    }
+    function openFirebaseSettings() { document.getElementById('gh-token-input').value = ghRepoToken; showAuthSection(); document.getElementById('fb-modal').style.display = 'flex'; }
+    function showAuthSection() { document.getElementById('fb-auth-section').style.display = 'block'; document.getElementById('fb-list-section').style.display = 'none'; }
+    function updateCloudIcon(status) { const icon = document.getElementById('cloud-icon'); if(!icon) return; icon.className = `cloud-icon ${status}`; icon.innerText = status === 'active' ? '🔄' : (status === 'error' ? '❌' : '🔥'); }
+    async function testFirebaseSync() { document.getElementById('fb-modal').style.display = 'none'; ghRepoToken = document.getElementById('gh-token-input').value.trim(); localStorage.setItem('gh_repo_token', ghRepoToken); isDataChanged = true; await performFirebaseBackup(false); }
+    async function checkAutoBackup() { if(!isDataChanged) return; const now = Date.now(); if(now - lastBackupTime >= BACKUP_INTERVAL) { lastBackupTime = now; await performFirebaseBackup(true); } }
 
     async function performFirebaseBackup(isAuto) {
         updateCloudIcon('active');
-        const now = Date.now();
         const data = { 
-            stats: localStorage.getItem(STORAGE_KEY_STATS), 
-            progress: localStorage.getItem(STORAGE_KEY_PROGRESS), 
-            lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK), 
-            filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE),
-            activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS),
-            timestamp: now 
+            stats: localStorage.getItem(STORAGE_KEY_STATS), progress: localStorage.getItem(STORAGE_KEY_PROGRESS), 
+            lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK), filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE),
+            activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS), timestamp: Date.now() 
         };
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups/${now}.json`, { 
-                method: 'PUT', 
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            if(res.ok) { 
-                isDataChanged = false; updateCloudIcon('done'); cleanupOldBackups(); 
-                if(!isAuto) showToast("🚀 수동 백업 100% 성공!", "success");
-                return true; 
-            } else { updateCloudIcon('error'); if(!isAuto) showToast("❌ 백업 실패", "error"); return false; }
-        } catch(e) { updateCloudIcon('error'); if(!isAuto) showToast("❌ 인터넷 연결 차단됨", "error"); return false; }
+            const res = await fetch(`${FIREBASE_DB_URL}/backups/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            if(res.ok) { isDataChanged = false; updateCloudIcon('done'); cleanupOldBackups(); if(!isAuto) showToast("🚀 수동 백업 100% 성공!", "success"); return true; } 
+            else { updateCloudIcon('error'); if(!isAuto) showToast("❌ 백업 실패", "error"); return false; }
+        } catch(e) { updateCloudIcon('error'); if(!isAuto) showToast("❌ 인터넷 연결 오류", "error"); return false; }
     }
 
     async function fetchFirebaseList() {
-        document.getElementById('fb-auth-section').style.display = 'none';
-        document.getElementById('fb-list-section').style.display = 'block';
-        const listUI = document.getElementById('fb-list-ui');
-        listUI.innerHTML = '<div style="padding:20px; text-align:center;">구글 서버에서 가져오는 중...</div>';
+        document.getElementById('fb-auth-section').style.display = 'none'; document.getElementById('fb-list-section').style.display = 'block';
+        const listUI = document.getElementById('fb-list-ui'); listUI.innerHTML = '<div style="padding:20px; text-align:center;">구글 서버에서 가져오는 중...</div>';
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups.json?shallow=true&_t=${Date.now()}`);
-            if(!res.ok) throw new Error();
-            const data = await res.json();
-            if(!data) { listUI.innerHTML = '<div style="padding:20px; text-align:center;">아직 저장된 백업이 없습니다.</div>'; return; }
-            const timestamps = Object.keys(data).sort((a, b) => b - a);
-            listUI.innerHTML = '';
+            const res = await fetch(`${FIREBASE_DB_URL}/backups.json?shallow=true&_t=${Date.now()}`); if(!res.ok) throw new Error();
+            const data = await res.json(); if(!data) { listUI.innerHTML = '<div style="padding:20px; text-align:center;">아직 저장된 백업이 없습니다.</div>'; return; }
+            const timestamps = Object.keys(data).sort((a, b) => b - a); listUI.innerHTML = '';
             timestamps.slice(0, 10).forEach(ts => {
-                const item = document.createElement('div'); item.className = 'backup-item';
-                const d = new Date(parseInt(ts));
+                const item = document.createElement('div'); item.className = 'backup-item'; const d = new Date(parseInt(ts));
                 const timeStr = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                 item.innerHTML = `<span><span class="backup-date">🕒 ${timeStr}</span> 에 저장됨</span>`;
-                item.onclick = async () => { 
-                    listUI.innerHTML = '<div style="padding:20px; text-align:center;">데이터를 복구 중입니다... 1초 대기!</div>'; 
-                    await restoreFromFirebase(ts); 
-                };
+                item.onclick = async () => { listUI.innerHTML = '<div style="padding:20px; text-align:center;">데이터를 복구 중입니다... 1초 대기!</div>'; await restoreFromFirebase(ts); };
                 listUI.appendChild(item);
             });
         } catch(e) { listUI.innerHTML = `<div style="padding:20px; text-align:center; color:#fa5252;">불러오기 실패. 앱을 새로고침 해주세요.</div>`; }
@@ -460,15 +380,14 @@
 
     async function restoreFromFirebase(ts) {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`);
-            const targetData = await res.json();
+            const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`); const targetData = await res.json();
             if(targetData.stats) localStorage.setItem(STORAGE_KEY_STATS, targetData.stats);
             if(targetData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, targetData.progress);
             if(targetData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, targetData.lastDeck);
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
             if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
             location.reload();
-        } catch(e) { alert("❌ 복구 중 에러가 발생했습니다."); }
+        } catch(e) { document.getElementById('fb-list-ui').innerHTML = `<div style="padding:20px; text-align:center; color:#fa5252;">복구 중 에러가 발생했습니다.</div>`; }
     }
 
     async function cleanupOldBackups() {
@@ -486,17 +405,19 @@
             const listUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/`;
             const res = await fetch(listUrl, { headers });
             const files = (await res.json()).filter(f => f.name.endsWith('.txt'));
+            
+            // 🔥 [핵심 1] 파싱 전에 기존 데이터를 한 번 불러옵니다.
+            const savedStats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+            
             for (const file of files) {
                 let text = "";
                 if(ghRepoToken) {
-                    const fileRes = await fetch(file.url, { headers });
-                    const fileJson = await fileRes.json();
+                    const fileRes = await fetch(file.url, { headers }); const fileJson = await fileRes.json();
                     if(fileJson.content) text = decodeURIComponent(escape(window.atob(fileJson.content.replace(/\n/g, ''))));
                 } else {
-                    const textRes = await fetch(file.download_url + '?t=' + Date.now());
-                    text = await textRes.text();
+                    const textRes = await fetch(file.download_url + '?t=' + Date.now()); text = await textRes.text();
                 }
-                processAnkiText(text, file.name);
+                processAnkiText(text, file.name, savedStats); // 저장된 stats를 함께 넘겨줍니다.
             }
         } catch (e) { console.log(e); }
         document.getElementById('loading').style.display = 'none';
@@ -513,7 +434,31 @@
         return rows;
     }
 
-    function processAnkiText(text, filename) {
+    // 🔥 [핵심 1-1] 이전 데이터 매칭을 보장하는 ID 추출 로직
+    function resolveCardId(q, stats) {
+        const currentId = cyrb53(q);
+        if (stats[currentId]) return currentId; // 현재 코드로 바로 매칭되면 통과
+
+        // 혹시 카드의 이미지 이름으로 과거에 저장된 기록이 있는지 한 번 더 뒤져봅니다.
+        const fnameMatch = q.match(/([^/]+\.(?:jpg|jpeg|png|gif|svg|webp))/i);
+        if (fnameMatch) {
+            const fname = fnameMatch[1];
+            // 과거 버전에서 안키가 이미지를 내보냈을 때의 순정 코드 형태들
+            const testFormats = [
+                `<img src="${fname}">`,
+                `<img src="${fname}" />`,
+                `<img src="${fname}" >`,
+                `"<img src=""${fname}"">"`
+            ];
+            for (const format of testFormats) {
+                const oldId = cyrb53(format);
+                if (stats[oldId]) return oldId; // 찾았다! 과거 ID 반환
+            }
+        }
+        return currentId; // 못 찾으면 그냥 새 ID 사용
+    }
+
+    function processAnkiText(text, filename, stats) {
         const rows = parseAnkiRawData(text);
         let deck = filename.replace('.txt', '');
         rows.forEach(fields => {
@@ -523,12 +468,11 @@
             else { deckNameInRow = deck; if (fields.length === 2) { q = fields[0]; a = fields[1]; } else if (fields.length > 0) { q = fields[0]; a = fields.slice(1).join('<br>'); } }
             if(!q) return;
             
-            // 🔥 [Fix] ID 생성 시 title 속성 무시 (이미지 이름으로만 지문 생성)
-            const cleanedQ = q.replace(/title\s*=\s*["'][^"']*["']/gi, '').replace(/\s+/g, ' ').replace(' >', '>').trim();
-            const id = cyrb53(cleanedQ);
+            // 🔥 [적용] 가장 강력한 데이터 복구 로직 발동
+            const finalId = resolveCardId(q, stats);
             
             if(!library[deckNameInRow]) library[deckNameInRow] = [];
-            library[deckNameInRow].push({ id, q, a });
+            library[deckNameInRow].push({ id: finalId, q, a });
         });
     }
 
@@ -551,9 +495,7 @@
         const temp = document.createElement('div'); temp.innerHTML = txt;
         const regex = /([a-zA-Z0-9_\-\.\%\(\)\s\uAC00-\uD7A3]+\.(jpg|jpeg|png|gif|svg|webp))/gi;
         temp.innerHTML = temp.innerHTML.replace(regex, (match) => {
-            let fname = match.trim();
-            let url = githubRawBase + encodeURIComponent(fname);
-            return url;
+            let fname = match.trim(); let url = githubRawBase + encodeURIComponent(fname); return url;
         });
         const wrap = document.createElement('div'); wrap.className = 'text-area';
         let plainTxt = temp.textContent.trim();
@@ -561,18 +503,23 @@
             const ox = document.createElement('span'); ox.className = `ox-highlight ${plainTxt[0]==='O'?'ox-o':'ox-x'}`;
             ox.innerText = plainTxt[0]; wrap.appendChild(ox);
         }
-        wrap.appendChild(temp);
-        return wrap;
+        wrap.appendChild(temp); return wrap;
     }
 
+    // 🔥 [핵심 2] 무조건 처음 등장하는 진짜 문제 번호만 빼오기
     function extractNumber(text) {
-        const titleMatch = text.match(/title\s*=\s*["']\s*(\d+)/i);
-        if (titleMatch) return parseInt(titleMatch[1], 10);
+        // 1. title 속성 안에서 숫자 찾기 (맨 앞의 군더더기 기호 무시하고 첫 숫자만)
+        const titleMatch = text.match(/title\s*=\s*["']([^"']*)["']/i);
+        if (titleMatch && titleMatch[1]) {
+            const numMatch = titleMatch[1].match(/^[^0-9]*(\d+)/); // 처음 등장하는 연속된 숫자
+            if (numMatch) return parseInt(numMatch[1], 10);
+        }
+        
+        // 2. 혹시나 해서 순수 텍스트에서도 똑같이 찾기
         const plainText = text.replace(/<[^>]*>?/gm, '').trim();
-        const textMatch = plainText.match(/^(\d+)/);
+        const textMatch = plainText.match(/^[^0-9]*(\d+)/);
         if (textMatch) return parseInt(textMatch[1], 10);
-        const anyMatch = text.match(/(\d+)/);
-        if (anyMatch) return parseInt(anyMatch[1], 10);
+        
         return 999999;
     }
 
@@ -595,6 +542,7 @@
         }
         let filtered = [...originalDeck];
         if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
+        
         if(currentSortMode === 'wrong') {
             filtered.sort((a,b) => {
                 const sA = stats[a.id] || {correct:0, total:0}, sB = stats[b.id] || {correct:0, total:0};
@@ -605,6 +553,7 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a.q) !== 999999 ? extractNumber(a.q) : extractNumber(a.a);
                 const numB = extractNumber(b.q) !== 999999 ? extractNumber(b.q) : extractNumber(b.a);
+                if (numA === numB) return a.id - b.id; // 번호가 같거나 없으면 제자리 유지(안정 정렬)
                 return numA - numB;
             });
         }
@@ -613,12 +562,7 @@
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
-    function updateFilterStatusUI() {
-        const sortText = modeNames[currentSortMode] || '🔄 원래순';
-        const filterText = modeNames[currentFilterMode] || '📋 전체';
-        document.getElementById('filter-status-text').innerText = `${sortText} & ${filterText}`;
-    }
-
+    function updateFilterStatusUI() { document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'} & ${modeNames[currentFilterMode] || '📋 전체'}`; }
     function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
     function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
     function resetFilters() { currentFilterMode = 'default'; currentSortMode = 'original'; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
@@ -722,7 +666,6 @@
     function toggleTag(e, type) { e.stopPropagation(); const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[id]); isDataChanged = true; checkAutoBackup(); }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
     function filterCards() { const q = document.getElementById('search-input').value.toLowerCase(); if(!q) { applyFilterAndSort(true); return; } activeDeck = originalDeck.filter(c => c.q.toLowerCase().includes(q) || c.a.toLowerCase().includes(q)); currentIndex = 0; showCard(); }
-    const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
     function openEditModal(e) { e.stopPropagation(); const c = activeDeck[currentIndex]; document.getElementById('edit-q').value=c.q; document.getElementById('edit-a').value=c.a; document.getElementById('edit-modal').style.display='flex'; }
     function closeEditModal() { document.getElementById('edit-modal').style.display='none'; }
     function saveEdit() { const c = activeDeck[currentIndex]; c.q = document.getElementById('edit-q').value; c.a = document.getElementById('edit-a').value; closeEditModal(); showCard(); isDataChanged = true; checkAutoBackup(); }
