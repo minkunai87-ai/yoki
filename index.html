@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.77 Final Number Sort)</title>
+<title>나만의 안키 (v10.76 FSRS & Perfect Sort)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -78,8 +78,8 @@
     .card-scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
     .zoom-content { padding: 25px 20px; min-height: 100%; width: 100%; transform-origin: 0 0; will-change: transform; }
     
-    .card-info { display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px dashed var(--border); align-items: center; }
-    .info-left { display: flex; gap: 8px; align-items: center; }
+    .card-info { display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px dashed var(--border); align-items: center; flex-wrap: wrap; gap: 8px; }
+    .info-left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .rate-badge { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; background: var(--input-bg); color: var(--text-sub); }
     .rate-badge.high { background: #0b2e13; color: #69db7c; } .rate-badge.low { background: #2e0b0b; color: #ff8787; }
     .date-badge { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; display: none; }
@@ -166,7 +166,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.77 (Final Number Sort)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.76 (FSRS & Sort)</div>
     </div>
 
     <div class="header-container">
@@ -197,6 +197,7 @@
             <div class="filter-chip sort-chip" id="sort-number" onclick="setSortMode('number')">🔢 번호순</div>
             <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
             <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
+            <div class="filter-chip" id="filter-due" onclick="setFilterMode('due')">🎯 오늘 복습</div>
             <div class="filter-chip" id="filter-mem" onclick="setFilterMode('mem')">🧠 암기</div>
             <div class="filter-chip" id="filter-cmp" onclick="setFilterMode('cmp')">🆚 비교</div>
             <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
@@ -213,7 +214,11 @@
                     <div id="loading" style="display:none; text-align:center; padding-top:50px;">데이터 로딩 중...</div>
                     
                     <div class="card-info" id="card-info">
-                        <div class="info-left"><span class="rate-badge" id="rate-badge">New</span><span class="date-badge" id="date-badge"></span></div>
+                        <div class="info-left">
+                            <span class="rate-badge" id="rate-badge">New</span>
+                            <span class="date-badge" id="date-badge"></span>
+                            <span class="date-badge" id="due-badge" style="display:none; margin-left: 2px;"></span>
+                        </div>
                         <div class="icon-wrapper">
                             <div class="icon-row">
                                 <button class="icon-btn edit-btn" onclick="openEditModal(event)">✏️</button>
@@ -300,7 +305,7 @@
     
     const STORAGE_KEY_LIBRARY = 'anki_final_library', STORAGE_KEY_STATS = 'anki_final_stats', STORAGE_KEY_PROGRESS = 'anki_final_progress_v2', STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state', STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
-    const modeNames = { 'default': '📋 전체', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
+    const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
 
     const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
     let ghRepoToken = localStorage.getItem('gh_repo_token') || '';
@@ -488,14 +493,10 @@
         if(savedFilter.filter) currentFilterMode = savedFilter.filter;
         if(savedFilter.sort) currentSortMode = savedFilter.sort;
         updateFilterStatusUI(); highlightFilter();
-        
-        // 초기 로딩 시 무조건 데이터를 새로고침하도록 변경 (이전처럼 이상한 상태로 멈춰있는 오류 방지)
         if (last) {
-            if (library[last]) selectDeck(last, false);
-            else selectDeckGroup(last + '__', false); 
-        } else if (Object.keys(library).length) { 
-            selectDeck(Object.keys(library)[0], false); 
-        }
+            if (library[last]) selectDeck(last, true);
+            else selectDeckGroup(last + '__', true); 
+        } else if (Object.keys(library).length) { selectDeck(Object.keys(library)[0], false); }
     }
 
     function createDOM(rawText, isAnswer) {
@@ -515,43 +516,52 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [v10.77 궁극의 정렬 공식] 진짜 무조건 맨 마지막 숫자만 완벽하게 가져옴
+    // 🔥 [최종 정렬 해결] 카드 뒷면(정답)의 맨 마지막에 적힌 숫자만 가장 똑똑하게 빼오기!
     function extractNumber(card) {
-        // 1. 카드 뒷면(정답)의 <태그>들을 모조리 공백으로 치환하여 투명 취급
-        let text = card.a.replace(/<[^>]*>?/gm, ' ');
+        // 복잡한 껍데기(이미지, HTML 코드)를 완전히 벗겨내고 순수한 글자만 남깁니다.
+        const plainText = card.a.replace(/<[^>]*>?/gm, '').trim();
         
-        // 2. &nbsp; 같은 HTML 특수 엔티티들도 공백으로 싹 치환
-        text = text.replace(/&[a-zA-Z0-9#]+;/g, ' ');
+        // 순수한 글자 속에서 숫자 덩어리들을 모두 찾습니다.
+        const nums = plainText.match(/\d+/g);
         
-        // 3. 남은 문자열에서 모든 '숫자(N이나 - 기호 포함)' 덩어리를 찾아냄
-        let matches = text.match(/(?:N|-)?\d+/gi);
-        
-        if (matches && matches.length > 0) {
-            // 4. 발견된 모든 숫자 덩어리 중에서 "무조건 제일 마지막(맨 뒤)"에 있는 것을 선택
-            let lastStr = matches[matches.length - 1].toUpperCase();
-            
-            // 만약 사용자가 맨 뒤에 'N1' 이런 식으로 적었다면, 무조건 맨 앞으로 보내기 위해 -1000을 해줌 (-999)
-            if (lastStr.startsWith('N')) {
-                return parseInt(lastStr.replace('N', ''), 10) - 1000;
-            }
-            
-            // 일반 숫자면 그냥 그대로 반환
-            return parseInt(lastStr, 10);
+        // 숫자가 발견되었다면? 맨 마지막에 있는 숫자만 골라냅니다! (회원님이 끝에 적어주신 그 번호!)
+        if (nums && nums.length > 0) {
+            return parseInt(nums[nums.length - 1], 10);
         }
         
-        // 숫자가 아예 안 적힌 카드는 무조건 꼴등(999999번)으로 밀어버림
+        // 아직 번호를 안 적어두신 카드는 맨 뒤로 줄을 서게 됩니다.
         return 999999;
     }
 
     function applyFilterAndSort(isRestore = false) {
         if(!currentDeckName) return;
         const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        
-        // 🔥 예전 캐시 복구 기능(isRestore)을 완전히 비활성화시켰습니다. 
-        // 이제 파일을 바꾸고 새로고침하면 과거 순서를 불러오지 않고 무조건 즉각 반영됩니다!
-        
+        if (isRestore) {
+            const savedIdsStr = localStorage.getItem(STORAGE_KEY_ACTIVE_IDS);
+            if (savedIdsStr) {
+                try {
+                    const savedIds = JSON.parse(savedIdsStr);
+                    const cardMap = new Map(); originalDeck.forEach(c => cardMap.set(c.id, c));
+                    activeDeck = []; savedIds.forEach(id => { if (cardMap.has(id)) activeDeck.push(cardMap.get(id)); });
+                    if (activeDeck.length > 0) {
+                        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
+                        updateFilterStatusUI(); renderDeckTree(); showCard(); return; 
+                    }
+                } catch(e) {}
+            }
+        }
         let filtered = [...originalDeck];
-        if(currentFilterMode !== 'default') filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
+        
+        // 🔥 [추가된 부분] '오늘 복습' 필터를 누르면, 로봇이 계산한 날짜가 오늘 이하인 카드만 쏙쏙 뽑아냅니다.
+        if(currentFilterMode !== 'default') {
+            if (currentFilterMode === 'due') {
+                const today = new Date(); 
+                today.setHours(0,0,0,0);
+                filtered = filtered.filter(c => stats[c.id] && stats[c.id].dueDate && stats[c.id].dueDate <= today.getTime());
+            } else {
+                filtered = filtered.filter(c => (stats[c.id] || {})[currentFilterMode]);
+            }
+        }
         
         if(currentSortMode === 'wrong') {
             filtered.sort((a,b) => {
@@ -563,16 +573,12 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a);
                 const numB = extractNumber(b);
-                if (numA === numB) return a.id - b.id; // 숫자가 똑같으면 원래 순서 유지
+                if (numA === numB) return a.id - b.id; // 번호가 같으면 순서 유지
                 return numA - numB;
             });
         }
         activeDeck = filtered; localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => c.id)));
-        
-        // 현재 인덱스 위치 보정 (정렬이 바뀌어도 최대한 오류 안 나게)
-        currentIndex = loadProgress(); 
-        if(currentIndex >= activeDeck.length) currentIndex = 0;
-        
+        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
@@ -613,21 +619,53 @@
     function revealAnswer() { document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block'; document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex'; }
     function moveCard(d) { let n = currentIndex + d; if(n >= 0 && n < activeDeck.length) { currentIndex = n; saveCurrentProgress(); showCard(); } }
 
+    // 🔥 [추가된 부분] 똑똑한 로봇 비서(FSRS)가 복습 날짜를 계산해주는 마법의 공식!
     function grade(score) {
         const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
-        if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0 };
+        if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0, interval: 0, ease: 2.5 };
+        
+        let interval = data[id].interval || 0; // 며칠 뒤에 볼까? (기본 0일)
+        let ease = data[id].ease || 2.5; // 카드 난이도 (기본 2.5)
+
+        // 정답률 계산 (원래 있던 기능)
         if (score === 3) { let r = data[id].total === 0 ? 0 : data[id].correct / data[id].total; data[id].total++; data[id].correct += r; }
         else { data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5; }
+        
+        // 로봇 비서의 복습 날짜 계산기
+        if (score === 0) { // '모름' 누르면
+            interval = 1; // 내일 당장 다시 봅니다!
+            ease = Math.max(1.3, ease - 0.2);
+        } else if (score === 1) { // '애매' 누르면
+            interval = interval === 0 ? 1 : Math.round(interval * 1.2); // 기간을 조금만 늘려줍니다.
+            ease = Math.max(1.3, ease - 0.15);
+        } else if (score === 2) { // '맞음' 누르면
+            interval = interval === 0 ? 1 : Math.round(interval * ease); // 기간을 쑥쑥 늘려줍니다!
+        } else if (score === 3) { // '확인(쉬움)' 누르면
+            interval = interval === 0 ? 4 : Math.round(interval * ease * 1.3); // 완벽히 외웠으니 한참 뒤에 봅니다.
+            ease += 0.15;
+        }
+        
+        data[id].interval = interval;
+        data[id].ease = ease;
+        
+        // 달력에 복습 날짜 동그라미 치기 (자정 기준)
+        const now = new Date(); 
+        now.setHours(0,0,0,0);
+        data[id].dueDate = now.getTime() + (interval * 86400000);
+
         data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
         isDataChanged = true; checkAutoBackup();
+        
         if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
     }
 
     function getVirtualDate(ts) { const d = new Date(ts); if(d.getHours() < 4) d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d; }
+    
     function updateStatsUI(s) {
         const b = document.getElementById('rate-badge');
         if(!s.total) { b.innerText="New"; b.className="rate-badge"; }
         else { const r = Math.round((s.correct/s.total)*100); b.innerText=`${r}% (${s.total}회)`; b.className=`rate-badge ${r>=80?'high':(r<50?'low':'')}`; }
+        
         const db = document.getElementById('date-badge');
         if(!s.lastDate) db.style.display='none';
         else {
@@ -635,6 +673,34 @@
             if (diff === 0) { db.innerText = "✅ 오늘"; db.className = 'date-badge badge-today'; }
             else if (diff === 1) { db.innerText = "⏮️ 1일 전"; db.className = 'date-badge badge-1d'; }
             else { db.innerText = `📅 ${diff}일 전`; db.className = 'date-badge badge-old'; }
+        }
+
+        // 🔥 [추가된 부분] 로봇 비서가 달아주는 복습 추천 딱지(태그)
+        const dueBadge = document.getElementById('due-badge');
+        if(s.dueDate) {
+            const today = new Date(); 
+            today.setHours(0,0,0,0);
+            const diff = Math.ceil((s.dueDate - today.getTime()) / 86400000);
+            
+            dueBadge.style.display = 'inline-block';
+            if(diff <= 0) {
+                // 오늘 당장 봐야 하는 카드! (빨간색 경고 딱지)
+                dueBadge.innerText = "🚨 오늘 복습 필요";
+                dueBadge.className = 'date-badge badge-1d'; 
+                dueBadge.style.background = '#491010'; 
+                dueBadge.style.color = '#ff8787'; 
+                dueBadge.style.border = '1px solid #ff8787';
+            } else {
+                // 아직 여유가 있는 카드! (파란색 안내 딱지)
+                dueBadge.innerText = `📅 ${diff}일 후 복습 추천`;
+                dueBadge.className = 'date-badge badge-old';
+                dueBadge.style.background = '#182836'; 
+                dueBadge.style.color = '#74c0fc'; 
+                dueBadge.style.border = '1px solid #1c7ed6';
+            }
+        } else {
+            // 한 번도 푼 적이 없는 카드는 딱지를 달지 않습니다.
+            dueBadge.style.display = 'none';
         }
     }
 
