@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.76 FSRS & Perfect Sort)</title>
+<title>나만의 안키 (v10.77 Ultimate FSRS & Sort)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -166,7 +166,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.76 (FSRS & Sort)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.77 (FSRS & Sort)</div>
     </div>
 
     <div class="header-container">
@@ -516,20 +516,22 @@
         wrap.appendChild(temp); return wrap;
     }
 
-    // 🔥 [최종 정렬 해결] 카드 뒷면(정답)의 맨 마지막에 적힌 숫자만 가장 똑똑하게 빼오기!
+    // 🔥 [정렬 로직 완벽 변경] 뒷면 텍스트 맨 뒤에서 숫자나 N숫자 쏙 빼오기
     function extractNumber(card) {
-        // 복잡한 껍데기(이미지, HTML 코드)를 완전히 벗겨내고 순수한 글자만 남깁니다.
         const plainText = card.a.replace(/<[^>]*>?/gm, '').trim();
         
-        // 순수한 글자 속에서 숫자 덩어리들을 모두 찾습니다.
-        const nums = plainText.match(/\d+/g);
-        
-        // 숫자가 발견되었다면? 맨 마지막에 있는 숫자만 골라냅니다! (회원님이 끝에 적어주신 그 번호!)
-        if (nums && nums.length > 0) {
-            return parseInt(nums[nums.length - 1], 10);
+        // 카드 뒷면에 N1, N02 처럼 N이 포함된 번호가 있는지 확인 (맨 뒤에 있는 것을 잡습니다)
+        const matches = [...plainText.matchAll(/(N)?\s*(\d+)/gi)];
+        if (matches.length > 0) {
+            const lastMatch = matches[matches.length - 1];
+            const isN = !!lastMatch[1];
+            const num = parseInt(lastMatch[2], 10);
+            
+            // N이 붙어있으면 1번보다 더 앞으로 오도록 -1000을 해줍니다!
+            return isN ? num - 1000 : num;
         }
         
-        // 아직 번호를 안 적어두신 카드는 맨 뒤로 줄을 서게 됩니다.
+        // 번호가 아예 없으면 꼴찌로 보냅니다.
         return 999999;
     }
 
@@ -552,7 +554,7 @@
         }
         let filtered = [...originalDeck];
         
-        // 🔥 [추가된 부분] '오늘 복습' 필터를 누르면, 로봇이 계산한 날짜가 오늘 이하인 카드만 쏙쏙 뽑아냅니다.
+        // 오늘 복습 필터 적용
         if(currentFilterMode !== 'default') {
             if (currentFilterMode === 'due') {
                 const today = new Date(); 
@@ -573,7 +575,7 @@
             filtered.sort((a,b) => {
                 const numA = extractNumber(a);
                 const numB = extractNumber(b);
-                if (numA === numB) return a.id - b.id; // 번호가 같으면 순서 유지
+                if (numA === numB) return a.id - b.id;
                 return numA - numB;
             });
         }
@@ -619,41 +621,48 @@
     function revealAnswer() { document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block'; document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex'; }
     function moveCard(d) { let n = currentIndex + d; if(n >= 0 && n < activeDeck.length) { currentIndex = n; saveCurrentProgress(); showCard(); } }
 
-    // 🔥 [추가된 부분] 똑똑한 로봇 비서(FSRS)가 복습 날짜를 계산해주는 마법의 공식!
+    // 🔥 [확인 버튼 독립] FSRS 알고리즘 일시 정지 및 단순 패스 기능
     function grade(score) {
-        const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        const id = activeDeck[currentIndex].id; 
+        const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
         if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0, interval: 0, ease: 2.5 };
         
-        let interval = data[id].interval || 0; // 며칠 뒤에 볼까? (기본 0일)
-        let ease = data[id].ease || 2.5; // 카드 난이도 (기본 2.5)
+        let interval = data[id].interval || 0;
+        let ease = data[id].ease || 2.5;
 
-        // 정답률 계산 (원래 있던 기능)
-        if (score === 3) { let r = data[id].total === 0 ? 0 : data[id].correct / data[id].total; data[id].total++; data[id].correct += r; }
-        else { data[id].total++; if(score === 2) data[id].correct++; else if(score === 1) data[id].correct += 0.5; }
-        
-        // 로봇 비서의 복습 날짜 계산기
-        if (score === 0) { // '모름' 누르면
-            interval = 1; // 내일 당장 다시 봅니다!
-            ease = Math.max(1.3, ease - 0.2);
-        } else if (score === 1) { // '애매' 누르면
-            interval = interval === 0 ? 1 : Math.round(interval * 1.2); // 기간을 조금만 늘려줍니다.
-            ease = Math.max(1.3, ease - 0.15);
-        } else if (score === 2) { // '맞음' 누르면
-            interval = interval === 0 ? 1 : Math.round(interval * ease); // 기간을 쑥쑥 늘려줍니다!
-        } else if (score === 3) { // '확인(쉬움)' 누르면
-            interval = interval === 0 ? 4 : Math.round(interval * ease * 1.3); // 완벽히 외웠으니 한참 뒤에 봅니다.
-            ease += 0.15;
+        // 정답률 기록
+        if (score === 3) { 
+            let r = data[id].total === 0 ? 0 : data[id].correct / data[id].total; 
+            data[id].total++; data[id].correct += r; 
+        } else { 
+            data[id].total++; 
+            if(score === 2) data[id].correct++; 
+            else if(score === 1) data[id].correct += 0.5; 
         }
         
-        data[id].interval = interval;
-        data[id].ease = ease;
-        
-        // 달력에 복습 날짜 동그라미 치기 (자정 기준)
-        const now = new Date(); 
-        now.setHours(0,0,0,0);
-        data[id].dueDate = now.getTime() + (interval * 86400000);
+        // 🔥 확인(3) 버튼이 아닐 때만 알고리즘 작동!
+        if (score !== 3) {
+            if (score === 0) {
+                interval = 1;
+                ease = Math.max(1.3, ease - 0.2);
+            } else if (score === 1) {
+                interval = interval === 0 ? 1 : Math.max(1, Math.round(interval * 1.2));
+                ease = Math.max(1.3, ease - 0.15);
+            } else if (score === 2) {
+                interval = interval === 0 ? 1 : Math.max(1, Math.round(interval * ease));
+            }
+            
+            data[id].interval = interval;
+            data[id].ease = ease;
+            
+            const now = new Date(); 
+            now.setHours(0,0,0,0);
+            data[id].dueDate = now.getTime() + (interval * 86400000);
+        }
+        // 확인(3)을 눌렀을 때는 dueDate, interval, ease는 전혀 건드리지 않고 아래의 lastDate(출석도장)만 찍습니다.
 
-        data[id].lastDate = Date.now(); localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        data[id].lastDate = Date.now(); 
+        localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
         isDataChanged = true; checkAutoBackup();
         
         if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
@@ -675,7 +684,6 @@
             else { db.innerText = `📅 ${diff}일 전`; db.className = 'date-badge badge-old'; }
         }
 
-        // 🔥 [추가된 부분] 로봇 비서가 달아주는 복습 추천 딱지(태그)
         const dueBadge = document.getElementById('due-badge');
         if(s.dueDate) {
             const today = new Date(); 
@@ -684,14 +692,12 @@
             
             dueBadge.style.display = 'inline-block';
             if(diff <= 0) {
-                // 오늘 당장 봐야 하는 카드! (빨간색 경고 딱지)
                 dueBadge.innerText = "🚨 오늘 복습 필요";
                 dueBadge.className = 'date-badge badge-1d'; 
                 dueBadge.style.background = '#491010'; 
                 dueBadge.style.color = '#ff8787'; 
                 dueBadge.style.border = '1px solid #ff8787';
             } else {
-                // 아직 여유가 있는 카드! (파란색 안내 딱지)
                 dueBadge.innerText = `📅 ${diff}일 후 복습 추천`;
                 dueBadge.className = 'date-badge badge-old';
                 dueBadge.style.background = '#182836'; 
@@ -699,7 +705,6 @@
                 dueBadge.style.border = '1px solid #1c7ed6';
             }
         } else {
-            // 한 번도 푼 적이 없는 카드는 딱지를 달지 않습니다.
             dueBadge.style.display = 'none';
         }
     }
