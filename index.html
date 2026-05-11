@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>나만의 안키 (v10.80 Ultimate FSRS)</title>
+<title>나만의 안키 (v10.81 FSRS & Migration)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -144,29 +144,10 @@
     <div class="sidebar" id="sidebar">
         <h2 style="margin-top:0; color:var(--text); font-size:1.4rem;">⚙️ 메뉴</h2>
         
-        <div class="menu-section" style="background:#1a1a1a; padding:15px; border-radius:8px; margin-bottom:20px; border:1px solid #333;">
-            <span class="menu-label" style="color:#ffd43b;">🎯 FSRS 목표 기억률</span>
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                <input type="number" id="tr-input" class="search-input" value="90" min="70" max="99" style="width: 80px;">
-                <span style="color:var(--text-sub); font-weight:bold;">%</span>
-            </div>
-            <div style="font-size:0.85rem; color:var(--text); margin-bottom: 15px; line-height: 1.5;">
-                <label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:12px; cursor:pointer;">
-                    <input type="radio" name="tr-mode" value="safe" checked style="margin-top:3px;">
-                    <div>
-                        <b>🔘 안전 모드 (권장)</b><br>
-                        <span style="color:#aaa; font-size:0.75rem;">기존 스케줄은 유지하고, 이후 복습부터 서서히 새 기억률을 적용합니다.</span>
-                    </div>
-                </label>
-                <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
-                    <input type="radio" name="tr-mode" value="recalc" style="margin-top:3px;">
-                    <div>
-                        <b>⚪ 전면 재계산 (주의)</b><br>
-                        <span style="color:#fa5252; font-size:0.75rem;">지금 즉시 덱 전체 카드의 스케줄을 갈아엎습니다. (복습 폭탄 발생 가능)</span>
-                    </div>
-                </label>
-            </div>
-            <button class="btn-sub" style="margin-top:0; padding:12px; background:var(--primary); color:white; border:none; text-align:center; font-size:0.95rem;" onclick="saveTR()">적용하기</button>
+        <div class="menu-section">
+            <button class="btn-sub" style="background:#1a1a1a; border:1px solid #fab005; color:#fab005; text-align:center; padding:12px; font-size:0.95rem;" onclick="openTRModal()">
+                🎯 목표 기억률: <span id="current-tr-display">90</span>% (설정 변경)
+            </button>
         </div>
 
         <div class="menu-section">
@@ -192,7 +173,44 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.80 (Ultimate FSRS)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">My Anki v10.81 (FSRS & Migration)</div>
+    </div>
+
+    <div class="modal-overlay" id="tr-modal">
+        <div class="modal-content" style="border: 1px solid #fab005;">
+            <h3 style="margin-top:0; color:#ffd43b; margin-bottom: 5px;">🎯 FSRS 목표 기억률 설정</h3>
+            <p style="font-size:0.85rem; color:var(--text-sub); margin-top:0; margin-bottom:15px; line-height:1.4;">
+                숫자가 높을수록 복습을 자주 하고, 낮을수록 간격이 쑥쑥 늘어납니다. (권장: 85~95%)
+            </p>
+            
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+                <input type="number" id="tr-input" class="search-input" value="90" min="70" max="99" style="width: 100px; font-size: 1.1rem; text-align:center;">
+                <span style="font-size:1.2rem; font-weight:bold;">%</span>
+            </div>
+            
+            <div style="font-size:0.9rem; color:var(--text); margin-bottom: 15px; line-height: 1.5; background:var(--input-bg); padding:15px; border-radius:8px;">
+                <label style="display:flex; align-items:flex-start; gap:10px; margin-bottom:15px; cursor:pointer;">
+                    <input type="radio" name="tr-mode" value="safe" checked style="margin-top:3px; transform: scale(1.2);">
+                    <div>
+                        <b>🔘 안전 모드 (권장)</b><br>
+                        <span style="color:#aaa; font-size:0.8rem;">기존 스케줄은 유지하고, 이후 복습 시부터 새 기억률을 부드럽게 적용합니다.</span>
+                    </div>
+                </label>
+                <hr style="border: 0; border-top: 1px dashed var(--border); margin: 10px 0;">
+                <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+                    <input type="radio" name="tr-mode" value="recalc" style="margin-top:3px; transform: scale(1.2);">
+                    <div>
+                        <b>⚪ 전면 재계산 (벼락치기용)</b><br>
+                        <span style="color:#fa5252; font-size:0.8rem;">과거 기록까지 역산하여, 지금 즉시 덱 전체의 스케줄을 갈아엎습니다.</span>
+                    </div>
+                </label>
+            </div>
+            
+            <div class="modal-btns">
+                <button class="modal-btn btn-save" onclick="saveTR()">적용하기</button>
+                <button class="modal-btn btn-cancel" onclick="document.getElementById('tr-modal').style.display='none'">닫기</button>
+            </div>
+        </div>
     </div>
 
     <div class="header-container">
@@ -339,7 +357,7 @@
     const BACKUP_INTERVAL = 10 * 60 * 1000; 
     let isDataChanged = false;
 
-    // 🔥 [FSRS 목표 기억률 로드]
+    // FSRS 목표 기억률 로드
     let targetRetention = parseFloat(localStorage.getItem('anki_target_retention')) || 0.90;
 
     const cyrb53 = (str, seed = 0) => { let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed; for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); return 4294967296 * (2097151 & h2) + (h1 >>> 0); };
@@ -353,7 +371,18 @@
         setTimeout(() => { toast.classList.remove('show'); }, 3000);
     }
 
-    // 🔥 [로직 업데이트] 옵션에 따른 목표 기억률 저장 및 전면 재계산
+    // 🔥 [신규 UI 연동] 모달 열기 및 버튼 텍스트 업데이트
+    function openTRModal() {
+        document.getElementById('tr-input').value = Math.round(targetRetention * 100);
+        document.getElementById('tr-modal').style.display = 'flex';
+        toggleMenu(); // 사이드바 닫기
+    }
+    
+    function updateTRButton() {
+        document.getElementById('current-tr-display').innerText = Math.round(targetRetention * 100);
+    }
+
+    // 🔥 [마이그레이션 적용] 목표 기억률 변경 및 전면 재계산
     function saveTR() {
         let val = parseInt(document.getElementById('tr-input').value, 10);
         let applyMode = document.querySelector('input[name="tr-mode"]:checked').value;
@@ -361,6 +390,7 @@
         if(val >= 70 && val <= 99) {
             targetRetention = val / 100;
             localStorage.setItem('anki_target_retention', targetRetention);
+            updateTRButton();
             
             if (applyMode === 'recalc') {
                 const stats = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
@@ -368,11 +398,23 @@
                 let recalcCount = 0;
                 
                 for (let id in stats) {
-                    if (stats[id].fsrs && stats[id].fsrs.reps > 0 && stats[id].interval > 0) {
-                        let S = stats[id].fsrs.S;
+                    let cardStat = stats[id];
+                    
+                    // 💡 마이그레이션(역산): 예전에 풀어서 interval은 있는데 FSRS 데이터가 없는 카드 구제
+                    if (cardStat.interval > 0 && (!cardStat.fsrs || cardStat.fsrs.S === 0)) {
+                        cardStat.fsrs = {
+                            D: 5.0, // 기본 난이도 할당
+                            S: cardStat.interval, // 예전 interval을 그대로 안정성 점수로 역산하여 대입
+                            reps: 1
+                        };
+                    }
+                    
+                    // 💡 전면 재계산 로직
+                    if (cardStat.fsrs && cardStat.fsrs.S > 0 && cardStat.interval > 0) {
+                        let S = cardStat.fsrs.S;
                         let interval = Math.max(1, Math.round(S * intervalFactor));
                         
-                        // 스마트 분산(Fuzzing) 유지
+                        // 스마트 분산 유지
                         if (interval > 3) {
                             let fuzz = 0;
                             if (interval >= 4 && interval <= 7) fuzz = 1;
@@ -382,11 +424,10 @@
                             interval = Math.max(1, interval + randomFuzz);
                         }
                         
-                        stats[id].interval = interval;
-                        // 과거 마지막으로 공부했던 날짜를 기준으로 새 스케줄 계산
-                        let baseDate = new Date(stats[id].lastDate || Date.now());
+                        cardStat.interval = interval;
+                        let baseDate = new Date(cardStat.lastDate || Date.now());
                         baseDate.setHours(0,0,0,0);
-                        stats[id].dueDate = baseDate.getTime() + (interval * 86400000);
+                        cardStat.dueDate = baseDate.getTime() + (interval * 86400000);
                         recalcCount++;
                     }
                 }
@@ -394,16 +435,13 @@
                 localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(stats));
                 isDataChanged = true;
                 checkAutoBackup();
-                showToast(`전면 재계산 완료! (${recalcCount}개 카드)`, "success");
-                
-                // 화면에 변경된 내역을 바로 새로고침
+                showToast(`전면 재계산 완료! (${recalcCount}개 업데이트됨)`, "success");
                 applyFilterAndSort(false); 
             } else {
-                showToast("안전 모드로 목표 기억률이 변경되었습니다.", "success");
+                showToast("안전 모드로 기억률이 변경되었습니다.", "success");
             }
             
-            // 메뉴 닫기
-            setTimeout(toggleMenu, 1000);
+            document.getElementById('tr-modal').style.display = 'none';
         } else {
             alert("70에서 99 사이의 숫자를 입력해주세요.");
             document.getElementById('tr-input').value = Math.round(targetRetention * 100);
@@ -430,7 +468,7 @@
     function updateTransform() { if (scale > 1) scrollContainer.style.overflow = 'hidden'; else scrollContainer.style.overflowY = 'auto'; zoomContent.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; }
 
     window.onload = async function() { 
-        document.getElementById('tr-input').value = Math.round(targetRetention * 100);
+        updateTRButton();
         await autoScanGitHub(); 
         initApp(); 
     };
