@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.89)</title>
+<title>Yoki (v10.91)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -132,7 +132,6 @@
     .backup-item:hover { background: var(--btn-hover); }
     .backup-date { color: #fab005; font-weight: bold; }
     
-    /* 🔥 [수정됨] 토스트 숨김 시 완전 투명화 및 더 깊게 밀어넣기 */
     #toast { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 24px; border-radius: 25px; font-size: 0.95rem; font-weight: bold; transition: all 0.3s ease; z-index: 20000; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 8px; pointer-events: none; opacity: 0; }
     #toast.show { bottom: 85px; opacity: 1; } 
     #toast.error { background: #fa5252; color: white; }
@@ -176,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">Yoki (v10.89)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">Yoki (v10.91)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -350,7 +349,6 @@
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
     
-    // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'anki_final_library';
     const STORAGE_KEY_STATS = 'anki_final_stats';
     const STORAGE_KEY_PROGRESS = 'anki_final_progress_v2';
@@ -460,36 +458,15 @@
     function resetZoom() { scale = 1; pointX = 0; pointY = 0; updateTransform(); scrollContainer.style.overflowY = 'auto'; }
     function updateTransform() { if (scale > 1) scrollContainer.style.overflow = 'hidden'; else scrollContainer.style.overflowY = 'auto'; zoomContent.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; }
 
-    // 🔥 [동기화 1단계: 자동 풀(Auto-Pull)] 
+    // 🔥 [수정됨] 새로고침 시 무조건 현재 기기의 로컬 데이터를 우선적으로 유지합니다.
     window.onload = async function() { 
         updateTRButton();
         
-        let localSyncTime = parseInt(localStorage.getItem('anki_last_sync_time') || '0');
-        let autoPulled = false;
-
-        try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups.json?shallow=true&_t=${Date.now()}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data) {
-                    const timestamps = Object.keys(data).sort((a,b) => b - a);
-                    const latestTs = timestamps[0];
-                    if (parseInt(latestTs) > localSyncTime) {
-                        // 알림 복구 (정상적으로 띄워줍니다)
-                        showToast("☁️ 다른 기기의 최신 데이터를 동기화 중입니다...", "normal");
-                        await restoreFromFirebase(latestTs, true);
-                        autoPulled = true;
-                    }
-                }
-            }
-        } catch(e) {}
-
-        if (!autoPulled) {
-            const savedSearch = localStorage.getItem('anki_search_query');
-            if (savedSearch) document.getElementById('search-input').value = savedSearch;
-            await autoScanGitHub(); 
-            initApp(); 
-        }
+        const savedSearch = localStorage.getItem('anki_search_query');
+        if (savedSearch) document.getElementById('search-input').value = savedSearch;
+        
+        await autoScanGitHub(); 
+        initApp(); 
     };
 
     document.addEventListener('visibilitychange', () => {
@@ -498,7 +475,6 @@
         }
     });
 
-    // 타이틀 바 터치 시 즉시 수동 백업 실행
     async function triggerManualBackup() {
         showToast("🚀 수동 백업을 시작합니다...", "normal");
         isDataChanged = true; 
@@ -582,7 +558,6 @@
                 if (savedSearch) document.getElementById('search-input').value = savedSearch;
                 await autoScanGitHub();
                 initApp();
-                // 복구 완료 알림 띄워줌
                 showToast("☁️ 다른 기기의 최신 데이터를 완벽하게 불러왔습니다!", "success");
             }
         } catch(e) { 
