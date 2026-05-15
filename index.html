@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.91)</title>
+<title>Yoki (v10.92)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">Yoki (v10.91)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;">Yoki (v10.92)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -334,7 +334,7 @@
                 </div>
             </div>
             <div id="fb-list-section" style="display:none;">
-                <h4 style="margin:10px 0; color:#fab005;">🕒 복구할 시간을 선택하세요 (최대 10개 보관)</h4>
+                <h4 style="margin:10px 0; color:#fab005;">🕒 복구할 시간을 선택하세요 (최대 100개 보관)</h4>
                 <div id="fb-list-ui" class="backup-list">서버에서 내역을 불러오는 중...</div>
                 <div class="modal-btns">
                     <button class="modal-btn btn-cancel" onclick="showAuthSection()">뒤로가기</button>
@@ -349,6 +349,7 @@
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', imageMap = new Map();
     
+    // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'anki_final_library';
     const STORAGE_KEY_STATS = 'anki_final_stats';
     const STORAGE_KEY_PROGRESS = 'anki_final_progress_v2';
@@ -458,7 +459,7 @@
     function resetZoom() { scale = 1; pointX = 0; pointY = 0; updateTransform(); scrollContainer.style.overflowY = 'auto'; }
     function updateTransform() { if (scale > 1) scrollContainer.style.overflow = 'hidden'; else scrollContainer.style.overflowY = 'auto'; zoomContent.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`; }
 
-    // 🔥 [수정됨] 새로고침 시 무조건 현재 기기의 로컬 데이터를 우선적으로 유지합니다.
+    // 🔥 [수정됨] 새로고침 시 무조건 현재 기기의 로컬 데이터를 유지합니다. (자동 덮어씌우기 삭제)
     window.onload = async function() { 
         updateTRButton();
         
@@ -513,6 +514,7 @@
         } catch(e) { updateCloudIcon('error'); if(!isAuto) showToast("❌ 인터넷 연결 오류", "error"); return false; }
     }
 
+    // 🔥 [수정됨] 과거 내역 100개까지 출력
     async function fetchFirebaseList() {
         document.getElementById('fb-auth-section').style.display = 'none'; document.getElementById('fb-list-section').style.display = 'block';
         const listUI = document.getElementById('fb-list-ui'); listUI.innerHTML = '<div style="padding:20px; text-align:center;">구글 서버에서 가져오는 중...</div>';
@@ -520,7 +522,7 @@
             const res = await fetch(`${FIREBASE_DB_URL}/backups.json?shallow=true&_t=${Date.now()}`); if(!res.ok) throw new Error();
             const data = await res.json(); if(!data) { listUI.innerHTML = '<div style="padding:20px; text-align:center;">아직 저장된 백업이 없습니다.</div>'; return; }
             const timestamps = Object.keys(data).sort((a, b) => b - a); listUI.innerHTML = '';
-            timestamps.slice(0, 10).forEach(ts => {
+            timestamps.slice(0, 100).forEach(ts => {
                 const item = document.createElement('div'); item.className = 'backup-item'; const d = new Date(parseInt(ts));
                 const timeStr = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                 item.innerHTML = `<span><span class="backup-date">🕒 ${timeStr}</span> 에 저장됨</span>`;
@@ -565,11 +567,12 @@
         }
     }
 
+    // 🔥 [수정됨] 서버 백업 보관 한도를 100개로 대폭 증가
     async function cleanupOldBackups() {
         try {
             const res = await fetch(`${FIREBASE_DB_URL}/backups.json?shallow=true&_t=${Date.now()}`); const data = await res.json(); if(!data) return;
             const timestamps = Object.keys(data).sort((a, b) => a - b); 
-            if(timestamps.length > 10) { const toDelete = timestamps.slice(0, timestamps.length - 10); for(const ts of toDelete) { fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`, { method: 'DELETE' }); } }
+            if(timestamps.length > 100) { const toDelete = timestamps.slice(0, timestamps.length - 100); for(const ts of toDelete) { fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`, { method: 'DELETE' }); } }
         } catch(e) {}
     }
 
