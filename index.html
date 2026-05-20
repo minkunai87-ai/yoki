@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.93-viewstate)</title>
+<title>Yoki (v10.94-restore-live)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.93-viewstate)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.94-restore-live)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -344,7 +344,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v10.93-viewstate';
+    const APP_VERSION = 'v10.94-restore-live';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -547,6 +547,7 @@
     async function restoreFromFirebase(ts, isAutoPull = false) {
         try {
             const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`); const targetData = await res.json();
+            const restoredViewState = normalizeBackupViewState(targetData);
             
             const token = localStorage.getItem('gh_repo_token');
             const lib = localStorage.getItem(STORAGE_KEY_LIBRARY);
@@ -561,7 +562,7 @@
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
             if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
             if(targetData.currentCardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, targetData.currentCardId);
-            if(targetData.viewState) restoreViewStateToStorage(targetData.viewState);
+            restoreViewStateToStorage(restoredViewState);
             if(targetData.targetRetention) localStorage.setItem('anki_target_retention', targetData.targetRetention); 
             if(targetData.localEdits) localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, targetData.localEdits);
             if(targetData.searchQuery) localStorage.setItem('anki_search_query', targetData.searchQuery);
@@ -569,7 +570,12 @@
             localStorage.setItem('anki_last_sync_time', ts.toString());
             
             if (!isAutoPull) {
-                location.reload();
+                const savedSearch = localStorage.getItem('anki_search_query');
+                document.getElementById('search-input').value = savedSearch || '';
+                await autoScanGitHub();
+                initApp();
+                document.getElementById('fb-modal').style.display = 'none';
+                showToast(`RESTORED: ${restoredViewState.deck || 'none'} / ${restoredViewState.sort || 'original'} / ${restoredViewState.filter || 'default'} / #${((Number(restoredViewState.index) || 0) + 1)}`, "success");
             } else {
                 const savedSearch = localStorage.getItem('anki_search_query');
                 if (savedSearch) document.getElementById('search-input').value = savedSearch;
@@ -690,7 +696,7 @@
     }
 
     function initApp() {
-        const savedViewState = JSON.parse(localStorage.getItem(STORAGE_KEY_VIEW_STATE) || '{}');
+        const savedViewState = parseJSONSafe(localStorage.getItem(STORAGE_KEY_VIEW_STATE), {});
         if(savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
         renderDeckTree();
         const last = (savedViewState && savedViewState.deck) || localStorage.getItem(STORAGE_KEY_LAST_DECK);
@@ -979,9 +985,45 @@
         };
     }
 
+    function parseJSONSafe(value, fallback) {
+        try {
+            if(value === undefined || value === null || value === '') return fallback;
+            return typeof value === 'string' ? JSON.parse(value) : value;
+        } catch(e) {
+            return fallback;
+        }
+    }
+
+    function normalizeBackupViewState(data) {
+        const viewState = parseJSONSafe(data && data.viewState, {});
+        const filterState = parseJSONSafe(data && data.filter, {});
+        const activeIds = parseJSONSafe(data && data.activeIds, []);
+        const deck = viewState.deck || (data && data.lastDeck) || '';
+        const filter = viewState.filter || filterState.filter || 'default';
+        const sort = viewState.sort || filterState.sort || 'original';
+        let index = Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0;
+
+        if(deck && data && data.progress) {
+            const progress = parseJSONSafe(data.progress, {});
+            const progressIndex = progress[`${deck}__${filter}__${sort}`];
+            if(Number.isFinite(Number(progressIndex))) index = Number(progressIndex);
+        }
+
+        return {
+            deck,
+            deckMode: viewState.deckMode || (data && data.lastDeckMode) || 'deck',
+            filter,
+            sort,
+            index,
+            cardId: viewState.cardId || (data && data.currentCardId) || '',
+            activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : (Array.isArray(activeIds) ? activeIds : []),
+            searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : ((data && data.searchQuery) || '')
+        };
+    }
+
     function restoreViewStateToStorage(rawState) {
         try {
-            const viewState = typeof rawState === 'string' ? JSON.parse(rawState) : rawState;
+            const viewState = parseJSONSafe(rawState, {});
             if(!viewState || typeof viewState !== 'object') return;
             if(viewState.deck) localStorage.setItem(STORAGE_KEY_LAST_DECK, viewState.deck);
             if(viewState.deckMode) localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
@@ -1025,7 +1067,7 @@
         if(!activeDeck.length) return 0;
         if(isRestore) {
             const savedCardId = localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID);
-            const savedViewState = JSON.parse(localStorage.getItem(STORAGE_KEY_VIEW_STATE) || '{}');
+            const savedViewState = parseJSONSafe(localStorage.getItem(STORAGE_KEY_VIEW_STATE), {});
             const targetCardId = savedViewState.cardId || savedCardId;
             if(targetCardId) {
                 const foundIndex = activeDeck.findIndex(c => String(c.id) === String(targetCardId));
