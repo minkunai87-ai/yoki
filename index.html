@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.95-snapshot-restore)</title>
+<title>Yoki (v10.98-full-active-snapshot)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.95-snapshot-restore)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.98-full-active-snapshot)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -344,7 +344,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v10.95-snapshot-restore';
+    const APP_VERSION = 'v10.98-full-active-snapshot';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -498,6 +498,7 @@
     async function performFirebaseBackup(isAuto) {
         updateCloudIcon('active');
         persistCurrentViewState(false);
+        const backupViewState = getCurrentViewState(true);
         const data = { 
             appVersion: APP_VERSION,
             stats: localStorage.getItem(STORAGE_KEY_STATS) || '{}', 
@@ -507,7 +508,7 @@
             filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE) || '{}',
             activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS) || '[]',
             currentCardId: localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
-            viewState: localStorage.getItem(STORAGE_KEY_VIEW_STATE) || '{}',
+            viewState: backupViewState,
             targetRetention: localStorage.getItem('anki_target_retention') || '0.90', 
             localEdits: localStorage.getItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
             searchQuery: localStorage.getItem('anki_search_query') || '',
@@ -573,14 +574,14 @@
                 const savedSearch = localStorage.getItem('anki_search_query');
                 document.getElementById('search-input').value = savedSearch || '';
                 await autoScanGitHub();
-                initApp();
+                if(!applySnapshotViewState(restoredViewState)) initApp();
                 document.getElementById('fb-modal').style.display = 'none';
-                showToast(`RESTORED: ${restoredViewState.deck || 'none'} / ${restoredViewState.sort || 'original'} / ${restoredViewState.filter || 'default'} / #${((Number(restoredViewState.index) || 0) + 1)}`, "success");
+                showToast(getRestoreResultMessage(), "success");
             } else {
                 const savedSearch = localStorage.getItem('anki_search_query');
                 if (savedSearch) document.getElementById('search-input').value = savedSearch;
                 await autoScanGitHub();
-                initApp();
+                if(!applySnapshotViewState(restoredViewState)) initApp();
                 showToast("☁️ 다른 기기의 최신 데이터를 완벽하게 불러왔습니다!", "success");
             }
         } catch(e) { 
@@ -691,7 +692,7 @@
             if (localEdits[finalId]) { q = localEdits[finalId].q; a = localEdits[finalId].a; }
             
             if(!library[deckNameInRow]) library[deckNameInRow] = [];
-            library[deckNameInRow].push({ id: finalId, q, a });
+            library[deckNameInRow].push({ id: finalId, q, a, deck: deckNameInRow });
         });
     }
 
@@ -973,8 +974,8 @@
         return activeDeck[currentIndex] ? String(activeDeck[currentIndex].id) : '';
     }
 
-    function getCurrentViewState() {
-        return {
+    function getCurrentViewState(includeCards = false) {
+        const state = {
             deck: currentDeckName || localStorage.getItem(STORAGE_KEY_LAST_DECK) || '',
             deckMode: localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck',
             filter: currentFilterMode,
@@ -985,6 +986,22 @@
             searchQuery: document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : (localStorage.getItem('anki_search_query') || ''),
             snapshotVersion: APP_VERSION
         };
+        if(includeCards) {
+            state.activeCards = activeDeck.map(card => ({
+                id: String(card.id),
+                q: card.q,
+                a: card.a,
+                deck: card.deck || currentDeckName || ''
+            }));
+        }
+        return state;
+    }
+
+    function getRestoreResultMessage() {
+        const deck = currentDeckName || localStorage.getItem(STORAGE_KEY_LAST_DECK) || 'none';
+        const position = activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0';
+        const cardId = activeDeck[currentIndex] ? String(activeDeck[currentIndex].id) : 'none';
+        return `RESTORED NOW: ${deck} / ${currentSortMode} / ${currentFilterMode} / ${position} / card:${cardId}`;
     }
 
     function parseJSONSafe(value, fallback) {
@@ -1019,6 +1036,7 @@
             index,
             cardId: viewState.cardId || (data && data.currentCardId) || '',
             activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : (Array.isArray(activeIds) ? activeIds : []),
+            activeCards: Array.isArray(viewState.activeCards) ? viewState.activeCards : [],
             searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : ((data && data.searchQuery) || ''),
             snapshotVersion: viewState.snapshotVersion || (data && data.appVersion) || 'legacy'
         };
@@ -1056,33 +1074,65 @@
         return library[deck] || [];
     }
 
+    function getCardsFromIdsAcrossLibrary(ids) {
+        const wanted = Array.isArray(ids) ? ids.map(String) : [];
+        if(!wanted.length) return [];
+        const cardMap = new Map();
+        Object.keys(library).forEach(deckName => {
+            (library[deckName] || []).forEach(card => {
+                cardMap.set(String(card.id), { ...card, deck: card.deck || deckName });
+            });
+        });
+        return wanted.map(id => cardMap.get(String(id))).filter(Boolean);
+    }
+
+    function getCommonDeckPrefix(deckNames) {
+        const names = [...new Set(deckNames.filter(Boolean))];
+        if(!names.length) return '';
+        if(names.length === 1) return names[0];
+        const splitNames = names.map(name => name.split('__'));
+        const prefix = [];
+        for(let i = 0; i < splitNames[0].length; i++) {
+            const part = splitNames[0][i];
+            if(splitNames.every(parts => parts[i] === part)) prefix.push(part);
+            else break;
+        }
+        return prefix.length ? prefix.join('__') : names[0];
+    }
+
+    function inferDeckNameFromCards(cards, fallbackDeck) {
+        const decks = cards.map(card => card.deck).filter(Boolean);
+        if(decks.length) return getCommonDeckPrefix(decks);
+        return fallbackDeck || '';
+    }
+
     function applySnapshotViewState(rawState) {
         const viewState = parseJSONSafe(rawState, {});
         if(!viewState || !viewState.deck) return false;
 
-        const snapshotOriginalDeck = getOriginalDeckForSnapshot(viewState);
-        if(!snapshotOriginalDeck.length) return false;
+        const activeIds = Array.isArray(viewState.activeIds) ? viewState.activeIds.map(String) : [];
+        const fullSnapshotCards = Array.isArray(viewState.activeCards)
+            ? viewState.activeCards.map(card => ({ ...card, id: String(card.id), deck: card.deck || viewState.deck || '' }))
+            : [];
+        const snapshotCards = fullSnapshotCards.length ? fullSnapshotCards : getCardsFromIdsAcrossLibrary(activeIds);
+        const resolvedDeckName = inferDeckNameFromCards(snapshotCards, viewState.deck);
+        const resolvedViewState = { ...viewState, deck: resolvedDeckName || viewState.deck };
+        const snapshotOriginalDeck = fullSnapshotCards.length ? fullSnapshotCards : getOriginalDeckForSnapshot(resolvedViewState);
+        if(!snapshotOriginalDeck.length && !snapshotCards.length) return false;
 
-        currentDeckName = viewState.deck;
+        currentDeckName = resolvedViewState.deck;
         currentFilterMode = viewState.filter || 'default';
         currentSortMode = viewState.sort || 'original';
-        originalDeck = snapshotOriginalDeck;
+        originalDeck = snapshotOriginalDeck.length ? snapshotOriginalDeck : snapshotCards;
 
-        const activeIds = Array.isArray(viewState.activeIds) ? viewState.activeIds.map(String) : [];
-        if(activeIds.length) {
-            const cardMap = new Map();
-            originalDeck.forEach(card => cardMap.set(String(card.id), card));
-            activeDeck = activeIds.map(id => cardMap.get(String(id))).filter(Boolean);
-        } else {
-            activeDeck = [];
-        }
+        activeDeck = snapshotCards.length ? snapshotCards : [];
 
         if(!activeDeck.length) {
             applyFilterAndSort(true);
             return true;
         }
 
-        const inferredMode = inferDeckModeForSnapshot(viewState);
+        const inferredMode = inferDeckModeForSnapshot(resolvedViewState);
         localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, inferredMode);
         localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode }));
@@ -1098,7 +1148,7 @@
         progress[getProgressKey()] = currentIndex;
         localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
         localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify({
-            ...viewState,
+            ...resolvedViewState,
             deckMode: inferredMode,
             index: currentIndex,
             cardId: String(activeDeck[currentIndex].id),
@@ -1124,7 +1174,9 @@
             if(Array.isArray(viewState.activeIds)) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(viewState.activeIds));
             if(viewState.cardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, String(viewState.cardId));
             if(typeof viewState.searchQuery === 'string') localStorage.setItem('anki_search_query', viewState.searchQuery);
-            localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
+            const storageViewState = { ...viewState };
+            delete storageViewState.activeCards;
+            localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify(storageViewState));
 
             const deck = viewState.deck || '';
             const filter = viewState.filter || 'default';
