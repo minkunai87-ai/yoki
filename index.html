@@ -354,8 +354,10 @@
     const STORAGE_KEY_STATS = 'anki_final_stats';
     const STORAGE_KEY_PROGRESS = 'anki_final_progress_v2';
     const STORAGE_KEY_LAST_DECK = 'anki_final_last_deck';
+    const STORAGE_KEY_LAST_DECK_MODE = 'anki_final_last_deck_mode';
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
     const STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
+    const STORAGE_KEY_CURRENT_CARD_ID = 'anki_final_current_card_id';
     const STORAGE_KEY_LOCAL_EDITS = 'anki_local_edits';
     const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
 
@@ -490,12 +492,15 @@
 
     async function performFirebaseBackup(isAuto) {
         updateCloudIcon('active');
+        persistCurrentViewState(false);
         const data = { 
             stats: localStorage.getItem(STORAGE_KEY_STATS) || '{}', 
             progress: localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}', 
             lastDeck: localStorage.getItem(STORAGE_KEY_LAST_DECK) || '', 
+            lastDeckMode: localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck',
             filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE) || '{}',
             activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS) || '[]',
+            currentCardId: localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
             targetRetention: localStorage.getItem('anki_target_retention') || '0.90', 
             localEdits: localStorage.getItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
             searchQuery: localStorage.getItem('anki_search_query') || '',
@@ -545,8 +550,10 @@
             if(targetData.stats) localStorage.setItem(STORAGE_KEY_STATS, targetData.stats);
             if(targetData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, targetData.progress);
             if(targetData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, targetData.lastDeck);
+            if(targetData.lastDeckMode) localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, targetData.lastDeckMode);
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
             if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
+            if(targetData.currentCardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, targetData.currentCardId);
             if(targetData.targetRetention) localStorage.setItem('anki_target_retention', targetData.targetRetention); 
             if(targetData.localEdits) localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, targetData.localEdits);
             if(targetData.searchQuery) localStorage.setItem('anki_search_query', targetData.searchQuery);
@@ -677,13 +684,15 @@
     function initApp() {
         renderDeckTree();
         const last = localStorage.getItem(STORAGE_KEY_LAST_DECK);
+        const lastMode = localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE);
         const savedFilter = JSON.parse(localStorage.getItem(STORAGE_KEY_FILTER_STATE) || '{}');
         if(savedFilter.filter) currentFilterMode = savedFilter.filter;
         if(savedFilter.sort) currentSortMode = savedFilter.sort;
         updateFilterStatusUI(); highlightFilter();
         
         if (last) {
-            if (library[last]) selectDeck(last, true);
+            if (lastMode === 'group') selectDeckGroup(last + '__', true);
+            else if (library[last]) selectDeck(last, true);
             else selectDeckGroup(last + '__', true); 
         } else if (Object.keys(library).length) { selectDeck(Object.keys(library)[0], false); }
     }
@@ -729,7 +738,7 @@
                     const cardMap = new Map(); originalDeck.forEach(c => cardMap.set(c.id, c));
                     activeDeck = []; savedIds.forEach(id => { if (cardMap.has(id)) activeDeck.push(cardMap.get(id)); });
                     if (activeDeck.length > 0) {
-                        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
+                        currentIndex = resolveRestoreIndex();
                         updateFilterStatusUI(); renderDeckTree(); showCard(); return; 
                     }
                 } catch(e) {}
@@ -762,7 +771,7 @@
             });
         }
         activeDeck = filtered; localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => c.id)));
-        currentIndex = loadProgress(); if(currentIndex >= activeDeck.length) currentIndex = 0;
+        currentIndex = resolveRestoreIndex();
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
@@ -783,6 +792,7 @@
 
     function selectDeck(name, isRestore = false) { 
         currentDeckName = name; originalDeck = library[name] || []; localStorage.setItem(STORAGE_KEY_LAST_DECK, name);
+        localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, 'deck');
         document.getElementById('deck-title-text').innerText = name.split('__').pop();
         if(!isRestore) { 
             document.getElementById('search-input').value = '';
@@ -795,6 +805,7 @@
         let merged = []; Object.keys(library).forEach(key => { if (key.startsWith(prefix) || key === prefix.replace('__', '')) merged = merged.concat(library[key]); });
         if (!merged.length) { return; }
         currentDeckName = prefix.replace(/__$/, ''); originalDeck = merged; localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
+        localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, 'group');
         document.getElementById('deck-title-text').innerText = currentDeckName.split('__').pop() + " (전체)";
         if(!isRestore) { 
             document.getElementById('search-input').value = '';
@@ -935,13 +946,43 @@
         if (isOpen) { setTimeout(() => { const activeEl = document.querySelector('.active'); if (activeEl) { const top = activeEl.getBoundingClientRect().top + sidebar.scrollTop - sidebar.getBoundingClientRect().top; sidebar.scrollTo({ top: top - sidebar.clientHeight/2 + 20, behavior: 'auto' }); } }, 100); }
     }
 
+    function getProgressKey() {
+        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}`;
+    }
+
+    function getCurrentCardId() {
+        return activeDeck[currentIndex] ? String(activeDeck[currentIndex].id) : '';
+    }
+
+    function persistCurrentViewState(markChanged = true) {
+        if(!currentDeckName) return;
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        progress[getProgressKey()] = currentIndex;
+        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
+        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode }));
+        localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, getCurrentCardId());
+        if(markChanged) {
+            isDataChanged = true; 
+            checkAutoBackup();
+        }
+    }
+
+    function resolveRestoreIndex() {
+        if(!activeDeck.length) return 0;
+        const savedCardId = localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID);
+        if(savedCardId) {
+            const foundIndex = activeDeck.findIndex(c => String(c.id) === savedCardId);
+            if(foundIndex >= 0) return foundIndex;
+        }
+        const savedIndex = loadProgress();
+        return savedIndex >= activeDeck.length ? 0 : savedIndex;
+    }
+
     function saveCurrentProgress() { 
-        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify({ ...JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}'), [`${currentDeckName}__${currentFilterMode}__${currentSortMode}`]: currentIndex })); 
-        isDataChanged = true; 
-        checkAutoBackup();
+        persistCurrentViewState(true);
     }
     
-    function loadProgress() { return JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}')[`${currentDeckName}__${currentFilterMode}__${currentSortMode}`] || 0; }
+    function loadProgress() { return JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}')[getProgressKey()] || 0; }
     function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || {correct:0, total:0}; }
     function toggleTag(e, type) { e.stopPropagation(); const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[id]); isDataChanged = true; checkAutoBackup(); }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
