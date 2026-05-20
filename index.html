@@ -358,6 +358,7 @@
     const STORAGE_KEY_FILTER_STATE = 'anki_final_filter_state';
     const STORAGE_KEY_ACTIVE_IDS = 'anki_final_active_ids'; 
     const STORAGE_KEY_CURRENT_CARD_ID = 'anki_final_current_card_id';
+    const STORAGE_KEY_VIEW_STATE = 'anki_final_view_state';
     const STORAGE_KEY_LOCAL_EDITS = 'anki_local_edits';
     const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
 
@@ -501,6 +502,7 @@
             filter: localStorage.getItem(STORAGE_KEY_FILTER_STATE) || '{}',
             activeIds: localStorage.getItem(STORAGE_KEY_ACTIVE_IDS) || '[]',
             currentCardId: localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
+            viewState: localStorage.getItem(STORAGE_KEY_VIEW_STATE) || '{}',
             targetRetention: localStorage.getItem('anki_target_retention') || '0.90', 
             localEdits: localStorage.getItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
             searchQuery: localStorage.getItem('anki_search_query') || '',
@@ -554,6 +556,7 @@
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
             if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
             if(targetData.currentCardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, targetData.currentCardId);
+            if(targetData.viewState) restoreViewStateToStorage(targetData.viewState);
             if(targetData.targetRetention) localStorage.setItem('anki_target_retention', targetData.targetRetention); 
             if(targetData.localEdits) localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, targetData.localEdits);
             if(targetData.searchQuery) localStorage.setItem('anki_search_query', targetData.searchQuery);
@@ -738,7 +741,7 @@
                     const cardMap = new Map(); originalDeck.forEach(c => cardMap.set(c.id, c));
                     activeDeck = []; savedIds.forEach(id => { if (cardMap.has(id)) activeDeck.push(cardMap.get(id)); });
                     if (activeDeck.length > 0) {
-                        currentIndex = resolveRestoreIndex();
+                        currentIndex = resolveIndexForDeck(true);
                         updateFilterStatusUI(); renderDeckTree(); showCard(); return; 
                     }
                 } catch(e) {}
@@ -771,22 +774,22 @@
             });
         }
         activeDeck = filtered; localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => c.id)));
-        currentIndex = resolveRestoreIndex();
+        currentIndex = resolveIndexForDeck(isRestore);
         updateFilterStatusUI(); renderDeckTree(); showCard();
     }
 
     function updateFilterStatusUI() { document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'} & ${modeNames[currentFilterMode] || '📋 전체'}`; }
-    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
-    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); }
+    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
+    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
     
     function resetFilters() { 
         currentFilterMode = 'default'; currentSortMode = 'original'; 
         document.getElementById('search-input').value = '';
         localStorage.setItem('anki_search_query', '');
-        saveFilterState(); highlightFilter(); applyFilterAndSort(false); 
+        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); 
     }
     
-    function saveFilterState() { localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode })); isDataChanged = true; checkAutoBackup(); }
+    function saveFilterState() { localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode })); isDataChanged = true; }
     function highlightFilter() { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active')); document.getElementById(`filter-${currentFilterMode}`).classList.add('active'); document.getElementById(`sort-${currentSortMode}`).classList.add('active'); }
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
@@ -954,25 +957,71 @@
         return activeDeck[currentIndex] ? String(activeDeck[currentIndex].id) : '';
     }
 
+    function getCurrentViewState() {
+        return {
+            deck: currentDeckName || localStorage.getItem(STORAGE_KEY_LAST_DECK) || '',
+            deckMode: localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck',
+            filter: currentFilterMode,
+            sort: currentSortMode,
+            index: currentIndex,
+            cardId: getCurrentCardId() || localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
+            activeIds: activeDeck.map(c => String(c.id)),
+            searchQuery: document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : (localStorage.getItem('anki_search_query') || '')
+        };
+    }
+
+    function restoreViewStateToStorage(rawState) {
+        try {
+            const viewState = typeof rawState === 'string' ? JSON.parse(rawState) : rawState;
+            if(!viewState || typeof viewState !== 'object') return;
+            if(viewState.deck) localStorage.setItem(STORAGE_KEY_LAST_DECK, viewState.deck);
+            if(viewState.deckMode) localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
+            if(viewState.filter || viewState.sort) localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter || 'default', sort: viewState.sort || 'original' }));
+            if(Array.isArray(viewState.activeIds)) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(viewState.activeIds));
+            if(viewState.cardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, String(viewState.cardId));
+            if(typeof viewState.searchQuery === 'string') localStorage.setItem('anki_search_query', viewState.searchQuery);
+            localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
+
+            const deck = viewState.deck || '';
+            const filter = viewState.filter || 'default';
+            const sort = viewState.sort || 'original';
+            if(deck) {
+                const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+                progress[`${deck}__${filter}__${sort}`] = Number(viewState.index) || 0;
+                localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
+            }
+        } catch(e) {}
+    }
+
     function persistCurrentViewState(markChanged = true) {
         if(!currentDeckName) return;
+        const viewState = getCurrentViewState();
         const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
-        progress[getProgressKey()] = currentIndex;
+        progress[getProgressKey()] = viewState.index;
         localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
-        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode }));
-        localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, getCurrentCardId());
+        localStorage.setItem(STORAGE_KEY_LAST_DECK, viewState.deck);
+        localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
+        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter, sort: viewState.sort }));
+        localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(viewState.activeIds));
+        localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, viewState.cardId);
+        localStorage.setItem('anki_search_query', viewState.searchQuery);
+        localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
         if(markChanged) {
             isDataChanged = true; 
             checkAutoBackup();
         }
     }
 
-    function resolveRestoreIndex() {
+    function resolveIndexForDeck(isRestore = false) {
         if(!activeDeck.length) return 0;
-        const savedCardId = localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID);
-        if(savedCardId) {
-            const foundIndex = activeDeck.findIndex(c => String(c.id) === savedCardId);
-            if(foundIndex >= 0) return foundIndex;
+        if(isRestore) {
+            const savedCardId = localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID);
+            const savedViewState = JSON.parse(localStorage.getItem(STORAGE_KEY_VIEW_STATE) || '{}');
+            const targetCardId = savedViewState.cardId || savedCardId;
+            if(targetCardId) {
+                const foundIndex = activeDeck.findIndex(c => String(c.id) === String(targetCardId));
+                if(foundIndex >= 0) return foundIndex;
+            }
         }
         const savedIndex = loadProgress();
         return savedIndex >= activeDeck.length ? 0 : savedIndex;
