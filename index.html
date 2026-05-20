@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.94-restore-live)</title>
+<title>Yoki (v10.95-snapshot-restore)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.94-restore-live)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.95-snapshot-restore)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -344,7 +344,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v10.94-restore-live';
+    const APP_VERSION = 'v10.95-snapshot-restore';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -698,6 +698,7 @@
     function initApp() {
         const savedViewState = parseJSONSafe(localStorage.getItem(STORAGE_KEY_VIEW_STATE), {});
         if(savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
+        if(savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
         renderDeckTree();
         const last = (savedViewState && savedViewState.deck) || localStorage.getItem(STORAGE_KEY_LAST_DECK);
         const lastMode = (savedViewState && savedViewState.deckMode) || localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE);
@@ -981,7 +982,8 @@
             index: currentIndex,
             cardId: getCurrentCardId() || localStorage.getItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
             activeIds: activeDeck.map(c => String(c.id)),
-            searchQuery: document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : (localStorage.getItem('anki_search_query') || '')
+            searchQuery: document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : (localStorage.getItem('anki_search_query') || ''),
+            snapshotVersion: APP_VERSION
         };
     }
 
@@ -1017,8 +1019,99 @@
             index,
             cardId: viewState.cardId || (data && data.currentCardId) || '',
             activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : (Array.isArray(activeIds) ? activeIds : []),
-            searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : ((data && data.searchQuery) || '')
+            searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : ((data && data.searchQuery) || ''),
+            snapshotVersion: viewState.snapshotVersion || (data && data.appVersion) || 'legacy'
         };
+    }
+
+    function inferDeckModeForSnapshot(viewState) {
+        const deck = viewState.deck || '';
+        if(!deck) return 'deck';
+        if(viewState.deckMode === 'group') return 'group';
+        const hasChildren = Object.keys(library).some(key => key.startsWith(deck + '__'));
+        if(!hasChildren) return 'deck';
+
+        const activeIds = Array.isArray(viewState.activeIds) ? viewState.activeIds.map(String) : [];
+        const singleDeck = library[deck] || [];
+        if(!singleDeck.length && hasChildren) return 'group';
+        if(activeIds.length) {
+            const singleIds = new Set(singleDeck.map(c => String(c.id)));
+            const hasOutsideSingleDeck = activeIds.some(id => !singleIds.has(String(id)));
+            if(hasOutsideSingleDeck) return 'group';
+        }
+        return viewState.deckMode || 'deck';
+    }
+
+    function getOriginalDeckForSnapshot(viewState) {
+        const deck = viewState.deck || '';
+        if(!deck) return [];
+        const mode = inferDeckModeForSnapshot(viewState);
+        if(mode === 'group') {
+            let merged = [];
+            Object.keys(library).forEach(key => {
+                if(key === deck || key.startsWith(deck + '__')) merged = merged.concat(library[key]);
+            });
+            return merged;
+        }
+        return library[deck] || [];
+    }
+
+    function applySnapshotViewState(rawState) {
+        const viewState = parseJSONSafe(rawState, {});
+        if(!viewState || !viewState.deck) return false;
+
+        const snapshotOriginalDeck = getOriginalDeckForSnapshot(viewState);
+        if(!snapshotOriginalDeck.length) return false;
+
+        currentDeckName = viewState.deck;
+        currentFilterMode = viewState.filter || 'default';
+        currentSortMode = viewState.sort || 'original';
+        originalDeck = snapshotOriginalDeck;
+
+        const activeIds = Array.isArray(viewState.activeIds) ? viewState.activeIds.map(String) : [];
+        if(activeIds.length) {
+            const cardMap = new Map();
+            originalDeck.forEach(card => cardMap.set(String(card.id), card));
+            activeDeck = activeIds.map(id => cardMap.get(String(id))).filter(Boolean);
+        } else {
+            activeDeck = [];
+        }
+
+        if(!activeDeck.length) {
+            applyFilterAndSort(true);
+            return true;
+        }
+
+        const inferredMode = inferDeckModeForSnapshot(viewState);
+        localStorage.setItem(STORAGE_KEY_LAST_DECK, currentDeckName);
+        localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, inferredMode);
+        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode }));
+        localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(activeDeck.map(c => String(c.id))));
+
+        const targetCardId = viewState.cardId ? String(viewState.cardId) : '';
+        const cardIndex = targetCardId ? activeDeck.findIndex(c => String(c.id) === targetCardId) : -1;
+        if(cardIndex >= 0) currentIndex = cardIndex;
+        else currentIndex = Math.min(Math.max(Number(viewState.index) || 0, 0), activeDeck.length - 1);
+        localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, String(activeDeck[currentIndex].id));
+
+        const progress = parseJSONSafe(localStorage.getItem(STORAGE_KEY_PROGRESS), {});
+        progress[getProgressKey()] = currentIndex;
+        localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
+        localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify({
+            ...viewState,
+            deckMode: inferredMode,
+            index: currentIndex,
+            cardId: String(activeDeck[currentIndex].id),
+            activeIds: activeDeck.map(c => String(c.id))
+        }));
+
+        document.getElementById('search-input').value = viewState.searchQuery || '';
+        document.getElementById('deck-title-text').innerText = currentDeckName.split('__').pop() + (inferredMode === 'group' ? " (전체)" : "");
+        updateFilterStatusUI();
+        highlightFilter();
+        renderDeckTree();
+        showCard();
+        return true;
     }
 
     function restoreViewStateToStorage(rawState) {
