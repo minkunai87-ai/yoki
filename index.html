@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v10.98-full-active-snapshot)</title>
+<title>Yoki (v10.99-mk-history-restore)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -175,7 +175,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.98-full-active-snapshot)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v10.99-mk-history-restore)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -344,7 +344,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v10.98-full-active-snapshot';
+    const APP_VERSION = 'v10.99-mk-history-restore';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -548,13 +548,6 @@
     async function restoreFromFirebase(ts, isAutoPull = false) {
         try {
             const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`); const targetData = await res.json();
-            const restoredViewState = normalizeBackupViewState(targetData);
-            
-            const token = localStorage.getItem('gh_repo_token');
-            const lib = localStorage.getItem(STORAGE_KEY_LIBRARY);
-            localStorage.clear();
-            if (token) localStorage.setItem('gh_repo_token', token);
-            if (lib) localStorage.setItem(STORAGE_KEY_LIBRARY, lib);
             
             if(targetData.stats) localStorage.setItem(STORAGE_KEY_STATS, targetData.stats);
             if(targetData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, targetData.progress);
@@ -563,7 +556,7 @@
             if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
             if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
             if(targetData.currentCardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, targetData.currentCardId);
-            restoreViewStateToStorage(restoredViewState);
+            if(targetData.viewState) restoreViewStateToStorage(normalizeBackupViewState(targetData));
             if(targetData.targetRetention) localStorage.setItem('anki_target_retention', targetData.targetRetention); 
             if(targetData.localEdits) localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, targetData.localEdits);
             if(targetData.searchQuery) localStorage.setItem('anki_search_query', targetData.searchQuery);
@@ -571,17 +564,13 @@
             localStorage.setItem('anki_last_sync_time', ts.toString());
             
             if (!isAutoPull) {
-                const savedSearch = localStorage.getItem('anki_search_query');
-                document.getElementById('search-input').value = savedSearch || '';
-                await autoScanGitHub();
-                if(!applySnapshotViewState(restoredViewState)) initApp();
-                document.getElementById('fb-modal').style.display = 'none';
-                showToast(getRestoreResultMessage(), "success");
+                localStorage.setItem('anki_restore_pending', '1');
+                location.reload();
             } else {
                 const savedSearch = localStorage.getItem('anki_search_query');
                 if (savedSearch) document.getElementById('search-input').value = savedSearch;
                 await autoScanGitHub();
-                if(!applySnapshotViewState(restoredViewState)) initApp();
+                initApp();
                 showToast("☁️ 다른 기기의 최신 데이터를 완벽하게 불러왔습니다!", "success");
             }
         } catch(e) { 
@@ -697,9 +686,11 @@
     }
 
     function initApp() {
+        const isHistoryRestore = localStorage.getItem('anki_restore_pending') === '1';
+        if(isHistoryRestore) localStorage.removeItem('anki_restore_pending');
         const savedViewState = parseJSONSafe(localStorage.getItem(STORAGE_KEY_VIEW_STATE), {});
-        if(savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
-        if(savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
+        if(!isHistoryRestore && savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
+        if(!isHistoryRestore && savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
         renderDeckTree();
         const last = (savedViewState && savedViewState.deck) || localStorage.getItem(STORAGE_KEY_LAST_DECK);
         const lastMode = (savedViewState && savedViewState.deckMode) || localStorage.getItem(STORAGE_KEY_LAST_DECK_MODE);
