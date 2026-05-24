@@ -82,9 +82,21 @@
     
     .card-info { display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px dashed var(--border); align-items: center; flex-wrap: wrap; gap: 8px; }
     .info-left { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .rate-badge { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; background: var(--input-bg); color: var(--text-sub); }
+    .rate-badge { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; background: var(--input-bg); color: var(--text-sub); cursor: pointer; user-select: none; }
     .rate-badge.high { background: #0b2e13; color: #69db7c; } .rate-badge.low { background: #2e0b0b; color: #ff8787; }
     .date-badge { font-size: 0.8rem; font-weight: bold; padding: 4px 8px; border-radius: 6px; display: none; }
+    .rate-history-wrap { position: relative; display: inline-block; }
+    .rate-history-dropdown { position: absolute; top: calc(100% + 8px); left: 0; width: 280px; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); z-index: 50; display: none; padding: 8px; }
+    .rate-history-dropdown.open { display: block; }
+    .rate-history-title { font-size: 0.82rem; font-weight: bold; color: var(--text); padding: 6px 8px 10px; border-bottom: 1px dashed var(--border); margin-bottom: 6px; }
+    .rate-history-empty { font-size: 0.82rem; color: var(--text-sub); padding: 12px 8px; text-align: center; }
+    .rate-history-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 8px; border-radius: 8px; color: var(--text); font-size: 0.82rem; }
+    .rate-history-item:hover { background: var(--input-bg); }
+    .rate-history-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .rate-history-score { font-weight: bold; color: var(--primary); }
+    .rate-history-time { color: var(--text-sub); font-size: 0.74rem; }
+    .rate-history-delete { flex-shrink: 0; border: none; background: #3b1616; color: #ff8787; border-radius: 6px; padding: 4px 8px; font-weight: bold; cursor: pointer; }
+    .rate-history-delete:active { background: #fa5252; color: white; }
     .badge-today { background: #0b2e13; color: #40c057; border: 1px solid #40c057; } 
     .badge-1d { background: #3f2e05; color: #ffd43b; border: 1px solid #ffd43b; } 
     .badge-old { background: #212529; color: #868e96; border: 1px solid #495057; } 
@@ -261,7 +273,10 @@
                     
                     <div class="card-info" id="card-info">
                         <div class="info-left">
-                            <span class="rate-badge" id="rate-badge">New</span>
+                            <span class="rate-history-wrap">
+                                <span class="rate-badge" id="rate-badge" onclick="toggleRateHistory(event)">New</span>
+                                <div class="rate-history-dropdown" id="rate-history-dropdown"></div>
+                            </span>
                             <span class="date-badge" id="date-badge"></span>
                             <span class="date-badge" id="due-badge" style="display:none; margin-left: 2px;"></span>
                         </div>
@@ -362,6 +377,8 @@
     const STORAGE_KEY_VIEW_STATE = 'anki_final_view_state';
     const STORAGE_KEY_LOCAL_EDITS = 'anki_local_edits';
     const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'original': '🔄 원래순', 'wrong': '🔥 오답순', 'number': '🔢 번호순' };
+    const gradeHistoryLabels = { 0: '모름', 1: '애매', 2: '맞음', 3: '확인' };
+    const gradeHistoryPoints = { 0: 0, 1: 0.5, 2: 1, 3: null };
 
     const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
     let ghRepoToken = localStorage.getItem('gh_repo_token') || '';
@@ -829,12 +846,85 @@
         resetZoom(); if(!activeDeck.length) { document.getElementById('question-section').innerHTML="<h3 style='text-align:center;'>카드가 없습니다.</h3>"; return; }
         const card = activeDeck[currentIndex]; const s = getStats(card.id);
         document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`;
-        updateStatsUI(s); updateIconsUI(s);
+        updateStatsUI(s); updateIconsUI(s); renderRateHistory(s);
         const qDiv = document.getElementById('question-section'); qDiv.innerHTML = ''; qDiv.appendChild(createDOM(card.q, false));
         const aDiv = document.getElementById('answer-section'); aDiv.innerHTML = ''; aDiv.appendChild(createDOM(card.a, true));
         aDiv.style.display = 'none'; document.getElementById('divider').style.display = 'none';
         document.getElementById('click-guide').style.display = 'block'; document.getElementById('grade-area').style.display = 'none';
         document.getElementById('nav-area').style.display = 'flex'; scrollContainer.scrollTop = 0;
+    }
+
+    function getGradeHistoryScoreText(item) {
+        const score = Number(item.score);
+        if (score === 3) return `확인 (${Math.round((Number(item.points) || 0) * 100)}%)`;
+        return gradeHistoryLabels[score] || '기록';
+    }
+
+    function formatHistoryTime(ts) {
+        if(!ts) return '시간 기록 없음';
+        const d = new Date(ts);
+        return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    function renderRateHistory(s) {
+        const dropdown = document.getElementById('rate-history-dropdown');
+        if(!dropdown) return;
+        const history = Array.isArray(s.history) ? s.history : [];
+        if(!history.length) {
+            dropdown.innerHTML = `<div class="rate-history-title">📊 정답률 히스토리</div><div class="rate-history-empty">아직 기록이 없습니다.</div>`;
+            return;
+        }
+        const rows = history.slice().reverse().map(item => `
+            <div class="rate-history-item">
+                <div class="rate-history-meta">
+                    <span class="rate-history-score">${getGradeHistoryScoreText(item)}</span>
+                    <span class="rate-history-time">${formatHistoryTime(item.time)}</span>
+                </div>
+                <button class="rate-history-delete" onclick="deleteRateHistoryItem(event, '${item.id}')">×</button>
+            </div>
+        `).join('');
+        dropdown.innerHTML = `<div class="rate-history-title">📊 정답률 히스토리 (${history.length}개)</div>${rows}`;
+    }
+
+    function toggleRateHistory(e) {
+        e.stopPropagation();
+        const dropdown = document.getElementById('rate-history-dropdown');
+        if(!dropdown) return;
+        dropdown.classList.toggle('open');
+    }
+
+    document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('rate-history-dropdown');
+        const wrap = document.querySelector('.rate-history-wrap');
+        if(dropdown && wrap && !wrap.contains(e.target)) dropdown.classList.remove('open');
+    });
+
+    function recalcStatsFromHistory(cardStat) {
+        const history = Array.isArray(cardStat.history) ? cardStat.history : [];
+        let correct = 0;
+        let total = 0;
+        history.forEach(item => {
+            total++;
+            correct += Number(item.points) || 0;
+        });
+        cardStat.correct = correct;
+        cardStat.total = total;
+    }
+
+    function deleteRateHistoryItem(e, historyId) {
+        e.stopPropagation();
+        if(!activeDeck.length) return;
+        const id = activeDeck[currentIndex].id;
+        const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}');
+        if(!data[id] || !Array.isArray(data[id].history)) return;
+        data[id].history = data[id].history.filter(item => String(item.id) !== String(historyId));
+        recalcStatsFromHistory(data[id]);
+        localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        updateStatsUI(data[id]);
+        renderRateHistory(data[id]);
+        isDataChanged = true;
+        checkAutoBackup();
+        showToast('히스토리를 삭제하고 정답률을 다시 계산했습니다.', 'success');
     }
 
     function revealAnswer() { document.getElementById('click-guide').style.display = 'none'; document.getElementById('divider').style.display = 'block'; document.getElementById('answer-section').style.display = 'block'; document.getElementById('grade-area').style.display = 'flex'; }
@@ -848,14 +938,24 @@
         if(!data[id].fsrs) data[id].fsrs = { D: 5.0, S: 0, reps: 0 };
         let fsrs = data[id].fsrs;
 
+        if(!Array.isArray(data[id].history)) data[id].history = [];
+        let historyPoints;
         if (score === 3) { 
             let r = data[id].total === 0 ? 0 : data[id].correct / data[id].total; 
+            historyPoints = r;
             data[id].total++; data[id].correct += r; 
         } else { 
+            historyPoints = gradeHistoryPoints[score] || 0;
             data[id].total++; 
             if(score === 2) data[id].correct++; 
             else if(score === 1) data[id].correct += 0.5; 
         }
+        data[id].history.push({
+            id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            score,
+            points: historyPoints,
+            time: Date.now()
+        });
         
         if (score !== 3) {
             fsrs.reps++;
