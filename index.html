@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.01-복합정렬)</title>
+<title>Yoki (v11.02-정렬드롭다운)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -43,6 +43,9 @@
     .filter-chip.sort-chip.active { background: #fcc419; color: #000; border-color: #fcc419; }
     .filter-chip.reset-chip { color: #ff8787; border-color: #ff8787; }
     .filter-chip.reset-chip:active { background: #fa5252; color: white; }
+    .sort-select-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; background: #242424; border: 1px solid #5c5c5c; border-radius: 20px; padding: 5px 8px 5px 12px; color: #ffd43b; font-size: 0.82rem; font-weight: bold; }
+    .sort-select { background: #333; color: #fff3bf; border: 1px solid #5c5c5c; border-radius: 14px; padding: 6px 24px 6px 8px; font-size: 0.82rem; font-weight: bold; outline: none; cursor: pointer; }
+    .sort-select:focus { border-color: #fcc419; }
 
     .sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); box-shadow: 2px 0 15px rgba(0,0,0,0.5); transition: transform 0.3s ease; z-index: 9999; padding: 25px; padding-top: calc(env(safe-area-inset-top) + 25px); display: flex; flex-direction: column; overflow-y: auto; transform: translateX(-105%); }
     .sidebar.open { transform: translateX(0); }
@@ -187,7 +190,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.01-복합정렬)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.02-정렬드롭다운)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -250,17 +253,24 @@
         <div class="filter-bar" id="filter-bar">
             <div class="filter-chip reset-chip" onclick="resetFilters()">🔄 초기화</div>
             <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
-            <div class="filter-chip sort-chip active" id="sort-original" onclick="setSortMode('original')">1차 🔄 원래순</div>
-            <div class="filter-chip sort-chip" id="sort-wrong" onclick="setSortMode('wrong')">1차 🔥 오답순</div>
-            <div class="filter-chip sort-chip" id="sort-number" onclick="setSortMode('number')">1차 🔢 번호순</div>
-            <div class="filter-chip sort-chip" id="sort-oldest" onclick="setSortMode('oldest')">1차 📅 오래된순</div>
-            <div class="filter-chip sort-chip" id="sort-recent" onclick="setSortMode('recent')">1차 🕘 최근순</div>
-            <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
-            <div class="filter-chip sort-chip active" id="secondary-none" onclick="setSecondarySortMode('none')">보조 없음</div>
-            <div class="filter-chip sort-chip" id="secondary-wrong" onclick="setSecondarySortMode('wrong')">보조 🔥 오답순</div>
-            <div class="filter-chip sort-chip" id="secondary-number" onclick="setSecondarySortMode('number')">보조 🔢 번호순</div>
-            <div class="filter-chip sort-chip" id="secondary-oldest" onclick="setSecondarySortMode('oldest')">보조 📅 오래된순</div>
-            <div class="filter-chip sort-chip" id="secondary-recent" onclick="setSecondarySortMode('recent')">보조 🕘 최근순</div>
+            <label class="sort-select-wrap">1차
+                <select class="sort-select" id="sort-primary-select" onchange="setSortMode(this.value)">
+                    <option value="original">🔄 원래순</option>
+                    <option value="wrong">🔥 오답순</option>
+                    <option value="number">🔢 번호순</option>
+                    <option value="oldest">📅 오래된순</option>
+                    <option value="recent">🕘 최근순</option>
+                </select>
+            </label>
+            <label class="sort-select-wrap">2차
+                <select class="sort-select" id="sort-secondary-select" onchange="setSecondarySortMode(this.value)">
+                    <option value="none">없음</option>
+                    <option value="wrong">🔥 오답순</option>
+                    <option value="number">🔢 번호순</option>
+                    <option value="oldest">📅 오래된순</option>
+                    <option value="recent">🕘 최근순</option>
+                </select>
+            </label>
             <div style="width:1px; height:20px; background:var(--border); flex-shrink:0;"></div>
             <div class="filter-chip active" id="filter-default" onclick="setFilterMode('default')">📋 전체</div>
             <div class="filter-chip" id="filter-due" onclick="setFilterMode('due')">🎯 오늘 복습</div>
@@ -367,7 +377,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.01-복합정렬';
+    const APP_VERSION = 'v11.02-정렬드롭다운';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -860,11 +870,11 @@
     function highlightFilter() {
         document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
         const filterChip = document.getElementById(`filter-${currentFilterMode}`);
-        const sortChip = document.getElementById(`sort-${currentSortMode}`);
-        const secondaryChip = document.getElementById(`secondary-${currentSecondarySortMode}`);
         if(filterChip) filterChip.classList.add('active');
-        if(sortChip) sortChip.classList.add('active');
-        if(secondaryChip) secondaryChip.classList.add('active');
+        const primarySelect = document.getElementById('sort-primary-select');
+        const secondarySelect = document.getElementById('sort-secondary-select');
+        if(primarySelect) primarySelect.value = currentSortMode;
+        if(secondarySelect) secondarySelect.value = currentSecondarySortMode;
     }
     function toggleFilterBar() { document.getElementById('filter-bar').classList.toggle('open'); }
 
