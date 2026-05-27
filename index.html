@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.02-정렬드롭다운)</title>
+<title>Yoki (v11.03-사용자액션백업)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -190,7 +190,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.02-정렬드롭다운)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.03-사용자액션백업)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -377,7 +377,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.02-정렬드롭다운';
+    const APP_VERSION = 'v11.03-사용자액션백업';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -400,8 +400,9 @@
 
     const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
     let ghRepoToken = localStorage.getItem('gh_repo_token') || '';
-    let lastBackupTime = 0;
-    const BACKUP_INTERVAL = 10 * 60 * 1000; 
+    let backupTimer = null;
+    let isBackupInFlight = false;
+    const BACKUP_DEBOUNCE_MS = 3000;
     let isDataChanged = false;
 
     let targetRetention = parseFloat(localStorage.getItem('anki_target_retention')) || 0.90;
@@ -465,12 +466,11 @@
                     }
                 }
                 localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(stats));
-                isDataChanged = true; checkAutoBackup();
+                scheduleBackup();
                 showToast(`전면 재계산 완료! (${recalcCount}개 업데이트됨)`, "success");
                 applyFilterAndSort(false); 
             } else {
                 showToast("안전 모드로 기억률이 변경되었습니다.", "success");
-                isDataChanged = true; checkAutoBackup();
             }
             document.getElementById('tr-modal').style.display = 'none';
         } else {
@@ -512,25 +512,41 @@
         initApp(); 
     };
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && isDataChanged) {
-            performFirebaseBackup(true);
-        }
-    });
-
     async function triggerManualBackup() {
         showToast("🚀 수동 백업을 시작합니다...", "normal");
         isDataChanged = true; 
-        await performFirebaseBackup(false);
+        await flushBackupToFirebase(false);
     }
 
     function openFirebaseSettings() { document.getElementById('gh-token-input').value = ghRepoToken; showAuthSection(); document.getElementById('fb-modal').style.display = 'flex'; }
     function showAuthSection() { document.getElementById('fb-auth-section').style.display = 'block'; document.getElementById('fb-list-section').style.display = 'none'; }
     function updateCloudIcon(status) { const icon = document.getElementById('cloud-icon'); if(!icon) return; icon.className = `cloud-icon ${status}`; icon.innerText = status === 'active' ? '🔄' : (status === 'error' ? '❌' : '🔥'); }
-    async function testFirebaseSync() { document.getElementById('fb-modal').style.display = 'none'; ghRepoToken = document.getElementById('gh-token-input').value.trim(); localStorage.setItem('gh_repo_token', ghRepoToken); isDataChanged = true; await performFirebaseBackup(false); }
-    async function checkAutoBackup() { if(!isDataChanged) return; const now = Date.now(); if(now - lastBackupTime >= BACKUP_INTERVAL) { lastBackupTime = now; await performFirebaseBackup(true); } }
+    async function testFirebaseSync() { document.getElementById('fb-modal').style.display = 'none'; ghRepoToken = document.getElementById('gh-token-input').value.trim(); localStorage.setItem('gh_repo_token', ghRepoToken); isDataChanged = true; await flushBackupToFirebase(false); }
+    function scheduleBackup() {
+        isDataChanged = true;
+        if (backupTimer) clearTimeout(backupTimer);
+        backupTimer = setTimeout(() => {
+            backupTimer = null;
+            flushBackupToFirebase(true);
+        }, BACKUP_DEBOUNCE_MS);
+    }
 
-    async function performFirebaseBackup(isAuto) {
+    async function flushBackupToFirebase(isAuto = true, options = {}) {
+        if (!isDataChanged || isBackupInFlight) return false;
+        if (backupTimer) {
+            clearTimeout(backupTimer);
+            backupTimer = null;
+        }
+
+        isBackupInFlight = true;
+        try {
+            return await performFirebaseBackup(isAuto, options);
+        } finally {
+            isBackupInFlight = false;
+        }
+    }
+
+    async function performFirebaseBackup(isAuto, options = {}) {
         updateCloudIcon('active');
         persistCurrentViewState(false);
         const backupViewState = getCurrentViewState(true);
@@ -550,11 +566,11 @@
             timestamp: Date.now() 
         };
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            const res = await fetch(`${FIREBASE_DB_URL}/backups/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), keepalive: !!options.keepalive });
             if(res.ok) { 
                 isDataChanged = false; 
                 localStorage.setItem('anki_last_sync_time', data.timestamp.toString()); 
-                updateCloudIcon('done'); cleanupOldBackups(); 
+                updateCloudIcon('done'); if(!options.keepalive) cleanupOldBackups(); 
                 if(!isAuto) showToast("🚀 수동 백업 100% 성공!", "success"); 
                 return true; 
             } 
@@ -563,6 +579,17 @@
     }
 
     // 🔥 [수정됨] 과거 내역 100개까지 출력
+    function flushPendingBackupOnExit() {
+        if (!isDataChanged) return;
+        flushBackupToFirebase(true, { keepalive: true });
+    }
+
+    window.addEventListener('beforeunload', flushPendingBackupOnExit);
+    window.addEventListener('pagehide', flushPendingBackupOnExit);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushPendingBackupOnExit();
+    });
+
     async function fetchFirebaseList() {
         document.getElementById('fb-auth-section').style.display = 'none'; document.getElementById('fb-list-section').style.display = 'block';
         const listUI = document.getElementById('fb-list-ui'); listUI.innerHTML = '<div style="padding:20px; text-align:center;">구글 서버에서 가져오는 중...</div>';
@@ -855,18 +882,18 @@
         const secondaryText = currentSecondarySortMode && currentSecondarySortMode !== 'none' ? ` + ${modeNames[currentSecondarySortMode]}` : '';
         document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'}${secondaryText} & ${modeNames[currentFilterMode] || '📋 전체'}`;
     }
-    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
-    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
-    function setSecondarySortMode(mode) { currentSecondarySortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
+    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
+    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
+    function setSecondarySortMode(mode) { currentSecondarySortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
     
     function resetFilters() { 
         currentFilterMode = 'default'; currentSortMode = 'original'; currentSecondarySortMode = 'none'; 
         document.getElementById('search-input').value = '';
         localStorage.setItem('anki_search_query', '');
-        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); 
+        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); 
     }
     
-    function saveFilterState() { localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode, secondarySort: currentSecondarySortMode })); isDataChanged = true; }
+    function saveFilterState() { localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode, secondarySort: currentSecondarySortMode })); }
     function highlightFilter() {
         document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
         const filterChip = document.getElementById(`filter-${currentFilterMode}`);
@@ -886,7 +913,7 @@
             document.getElementById('search-input').value = '';
             localStorage.setItem('anki_search_query', '');
         }
-        applyFilterAndSort(isRestore); if(!isRestore) { isDataChanged = true; checkAutoBackup(); }
+        applyFilterAndSort(isRestore);
     }
 
     function selectDeckGroup(prefix, isRestore = false) {
@@ -899,7 +926,7 @@
             document.getElementById('search-input').value = '';
             localStorage.setItem('anki_search_query', '');
         }
-        applyFilterAndSort(isRestore); if(!isRestore) { toggleMenu(); isDataChanged = true; checkAutoBackup(); }
+        applyFilterAndSort(isRestore); if(!isRestore) { toggleMenu(); }
     }
 
     function showCard() {
@@ -1031,8 +1058,7 @@
         updateStatsUI(data[id]);
         applyFilterAndSort(true);
         renderRateHistory(data[id]);
-        isDataChanged = true;
-        checkAutoBackup();
+        scheduleBackup();
         showToast('히스토리를 삭제하고 정답률/복습일을 다시 계산했습니다.', 'success');
     }
 
@@ -1097,7 +1123,7 @@
         }
         data[id].lastDate = Date.now(); 
         localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data));
-        isDataChanged = true; checkAutoBackup();
+        scheduleBackup();
         if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
     }
 
@@ -1408,8 +1434,7 @@
         localStorage.setItem('anki_search_query', viewState.searchQuery);
         localStorage.setItem(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
         if(markChanged) {
-            isDataChanged = true; 
-            checkAutoBackup();
+            scheduleBackup();
         }
     }
 
@@ -1429,12 +1454,12 @@
     }
 
     function saveCurrentProgress() { 
-        persistCurrentViewState(true);
+        persistCurrentViewState(false);
     }
     
     function loadProgress() { return JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}')[getProgressKey()] || 0; }
     function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || {correct:0, total:0}; }
-    function toggleTag(e, type) { e.stopPropagation(); const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[id]); isDataChanged = true; checkAutoBackup(); }
+    function toggleTag(e, type) { e.stopPropagation(); const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[id]); scheduleBackup(); }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
     
     function filterCards() { 
@@ -1455,7 +1480,7 @@
         localEdits[c.id] = { q: c.q, a: c.a };
         localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, JSON.stringify(localEdits));
         localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(library));
-        closeEditModal(); showCard(); isDataChanged = true; checkAutoBackup(); 
+        closeEditModal(); showCard(); scheduleBackup(); 
     }
     
     function exportData() { const d = new Date(); const fileName = `yoki_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}.json`; const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(localStorage)], {type:'application/json'})); a.download=fileName; a.click(); }
