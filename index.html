@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.03-미학습정렬)</title>
+<title>Yoki (v11.04-완전백업롤백)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -190,7 +190,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.03-미학습정렬)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.04-완전백업롤백)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -379,7 +379,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.03-미학습정렬';
+    const APP_VERSION = 'v11.04-완전백업롤백';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -956,15 +956,15 @@
         const secondaryText = currentSecondarySortMode && currentSecondarySortMode !== 'none' ? ` + ${modeNames[currentSecondarySortMode]}` : '';
         document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'}${secondaryText} & ${modeNames[currentFilterMode] || '📋 전체'}`;
     }
-    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
-    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
-    function setSecondarySortMode(mode) { currentSecondarySortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); }
+    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
+    function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
+    function setSecondarySortMode(mode) { currentSecondarySortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
     
     function resetFilters() { 
         currentFilterMode = 'default'; currentSortMode = 'original'; currentSecondarySortMode = 'none'; 
         document.getElementById('search-input').value = '';
         localStorage.setItem('anki_search_query', '');
-        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(false); 
+        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); 
     }
     
     function saveFilterState() { localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode, secondarySort: currentSecondarySortMode })); }
@@ -988,6 +988,7 @@
             localStorage.setItem('anki_search_query', '');
         }
         applyFilterAndSort(isRestore);
+        if(!isRestore) persistCurrentViewState(true);
     }
 
     function selectDeckGroup(prefix, isRestore = false) {
@@ -1000,7 +1001,7 @@
             document.getElementById('search-input').value = '';
             localStorage.setItem('anki_search_query', '');
         }
-        applyFilterAndSort(isRestore); if(!isRestore) { toggleMenu(); }
+        applyFilterAndSort(isRestore); if(!isRestore) { persistCurrentViewState(true); toggleMenu(); }
     }
 
     function showCard() {
@@ -1475,7 +1476,7 @@
             if(!viewState || typeof viewState !== 'object') return;
             if(viewState.deck) localStorage.setItem(STORAGE_KEY_LAST_DECK, viewState.deck);
             if(viewState.deckMode) localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
-            if(viewState.filter || viewState.sort) localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter || 'default', sort: viewState.sort || 'original' }));
+            if(viewState.filter || viewState.sort) localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter || 'default', sort: viewState.sort || 'original', secondarySort: viewState.secondarySort || 'none' }));
             if(Array.isArray(viewState.activeIds)) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(viewState.activeIds));
             if(viewState.cardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, String(viewState.cardId));
             if(typeof viewState.searchQuery === 'string') localStorage.setItem('anki_search_query', viewState.searchQuery);
@@ -1488,6 +1489,8 @@
             const sort = viewState.sort || 'original';
             if(deck) {
                 const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+                const secondarySort = viewState.secondarySort || 'none';
+                progress[`${deck}__${filter}__${sort}__${secondarySort}`] = Number(viewState.index) || 0;
                 progress[`${deck}__${filter}__${sort}`] = Number(viewState.index) || 0;
                 localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
             }
@@ -1502,7 +1505,7 @@
         localStorage.setItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
         localStorage.setItem(STORAGE_KEY_LAST_DECK, viewState.deck);
         localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
-        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter, sort: viewState.sort }));
+        localStorage.setItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter, sort: viewState.sort, secondarySort: viewState.secondarySort }));
         localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(viewState.activeIds));
         localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, viewState.cardId);
         localStorage.setItem('anki_search_query', viewState.searchQuery);
@@ -1528,10 +1531,13 @@
     }
 
     function saveCurrentProgress() { 
-        persistCurrentViewState(false);
+        persistCurrentViewState(true);
     }
     
-    function loadProgress() { return JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}')[getProgressKey()] || 0; }
+    function loadProgress() {
+        const progress = JSON.parse(localStorage.getItem(STORAGE_KEY_PROGRESS) || '{}');
+        return progress[getProgressKey()] ?? progress[`${currentDeckName}__${currentFilterMode}__${currentSortMode}`] ?? 0;
+    }
     function getStats(id) { return JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}')[id] || {correct:0, total:0}; }
     function toggleTag(e, type) { e.stopPropagation(); const id = activeDeck[currentIndex].id; const data = JSON.parse(localStorage.getItem(STORAGE_KEY_STATS) || '{}'); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(data)); updateIconsUI(data[id]); scheduleBackup(); }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
