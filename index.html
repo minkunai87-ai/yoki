@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.04-완전백업롤백)</title>
+<title>Yoki (v11.05-확인 기록 정답률 제외)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -190,7 +190,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.04-완전백업롤백)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.05-확인 기록 정답률 제외)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -379,7 +379,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.04-완전백업롤백';
+    const APP_VERSION = 'v11.05-확인 기록 정답률 제외';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -899,11 +899,11 @@
         const isUnlearned = (card) => {
             const s = stats[card.id] || {};
             const history = Array.isArray(s.history) ? s.history : [];
-            return Number(s.total || 0) === 0 || history.length === 0;
+            return getAccuracyStats(s).total === 0 || history.length === 0;
         };
         const getWrongRate = (card) => {
-            const s = stats[card.id] || { correct: 0, total: 0 };
-            return s.total === 0 ? 1 : (s.correct / s.total);
+            const accuracy = getAccuracyStats(stats[card.id]);
+            return accuracy.total === 0 ? 1 : (accuracy.correct / accuracy.total);
         };
         const getLastSeen = (card) => {
             const s = stats[card.id] || {};
@@ -1018,8 +1018,32 @@
 
     function getGradeHistoryScoreText(item) {
         const score = Number(item.score);
+        if (isConfirmHistoryItem(item)) return gradeHistoryLabels[3] || '확인';
         if (score === 3) return `확인 (${Math.round((Number(item.points) || 0) * 100)}%)`;
         return gradeHistoryLabels[score] || '기록';
+    }
+
+    function isConfirmHistoryItem(item) {
+        return Number(item && item.score) === 3 || item?.result === 'confirm' || item?.type === 'confirm' || item?.result === 'check' || item?.type === 'check';
+    }
+
+    function getAccuracyStats(stat = {}) {
+        const history = Array.isArray(stat.history) ? stat.history : [];
+        if (!history.length) {
+            return {
+                correct: Number(stat.correct) || 0,
+                total: Number(stat.total) || 0
+            };
+        }
+
+        return history.reduce((acc, item) => {
+            if (isConfirmHistoryItem(item)) return acc;
+            const score = Number(item.score);
+            acc.total += 1;
+            if (score === 2) acc.correct += 1;
+            else if (score === 1) acc.correct += 0.5;
+            return acc;
+        }, { correct: 0, total: 0 });
     }
 
     function formatHistoryTime(ts) {
@@ -1074,17 +1098,17 @@
             const score = Number(item.score);
             const itemTime = Number(item.time) || Date.now();
             let points;
-            if (score === 3) {
-                points = total === 0 ? 0 : correct / total;
-            } else {
-                points = gradeHistoryPoints[score] || 0;
-            }
+            const isConfirm = isConfirmHistoryItem(item);
+            if (isConfirm) points = null;
+            else points = gradeHistoryPoints[score] || 0;
             item.points = points;
-            total++;
-            correct += points;
+            if (!isConfirm) {
+                total++;
+                correct += points;
+            }
             lastDate = itemTime;
 
-            if (score !== 3) {
+            if (!isConfirm) {
                 fsrs.reps++;
                 if (fsrs.reps === 1) {
                     if (score === 0) { fsrs.D = 7.0; fsrs.S = 1.0; }
@@ -1151,9 +1175,7 @@
         if(!Array.isArray(data[id].history)) data[id].history = [];
         let historyPoints;
         if (score === 3) { 
-            let r = data[id].total === 0 ? 0 : data[id].correct / data[id].total; 
-            historyPoints = r;
-            data[id].total++; data[id].correct += r; 
+            historyPoints = null;
         } else { 
             historyPoints = gradeHistoryPoints[score] || 0;
             data[id].total++; 
@@ -1163,6 +1185,8 @@
         data[id].history.push({
             id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
             score,
+            result: score === 3 ? 'confirm' : undefined,
+            type: score === 3 ? 'confirm' : undefined,
             points: historyPoints,
             time: Date.now()
         });
@@ -1206,6 +1230,7 @@
     
     function updateStatsUI(s) {
         const b = document.getElementById('rate-badge');
+        s = { ...s, ...getAccuracyStats(s) };
         if(!s.total) { b.innerText="New"; b.className="rate-badge"; }
         else { const r = Math.round((s.correct/s.total)*100); b.innerText=`${r}% (${s.total}회)`; b.className=`rate-badge ${r>=80?'high':(r<50?'low':'')}`; }
         
