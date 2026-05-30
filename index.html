@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.2-카드맵StatsId수정)</title>
+<title>Yoki (v11.18.3-실제StatsId매핑)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.2-카드맵StatsId수정)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.3-실제StatsId매핑)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.2-카드맵StatsId수정';
+    const APP_VERSION = 'v11.18.3-실제StatsId매핑';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1001,9 +1001,13 @@
         const cardIdentityMapEntries = Object.entries(cardIdentityMap);
         const cardIdentityMapSize = cardIdentityMapEntries.length;
         const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry }));
+        const entriesWithStatsId = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId).length;
+        const entriesWithoutStatsId = cardIdentityMapSize - entriesWithStatsId;
+        const backupStats = getStatsStore();
+        const statsIdExistsCount = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId && backupStats[entry.statsId]).length;
         lastFirebaseCardIdentityMap = cardIdentityMap;
         lastFirebaseCardIdentityMapSource = 'backup-generated';
-        console.log('[Yoki Firebase Backup CardIdentityMap]', { cardIdentityMapSize, sample: cardIdentityMapSample });
+        console.log('[Yoki Firebase Backup CardIdentityMap]', { cardIdentityMapSize, entriesWithStatsId, entriesWithoutStatsId, statsIdExistsCount, sample: cardIdentityMapSample });
         if(!isAuto) showToast(`🧭 카드맵 ${cardIdentityMapSize}개 생성`, cardIdentityMapSize > 0 ? 'normal' : 'error');
         if(cardIdentityMapSize === 0) {
             updateCloudIcon('error');
@@ -1433,12 +1437,14 @@
                 const fingerprint = getStableFingerprintForCard(card, deckName);
                 if(!fingerprint || !card || card.id === undefined || card.id === null) return;
                 const cardId = String(card.id);
-                const statsId = getCardStatsCandidates(card, stats).find(id => stats[id]) || cardId;
+                const candidateIds = getCardStatsCandidates(card, stats);
+                const statsId = candidateIds.find(id => stats[id]) || '';
                 map[fingerprint] = {
                     cardId,
-                    statsId: String(statsId),
+                    statsId: statsId ? String(statsId) : '',
                     imageSrcs: getImageSrcCandidatesForCard(card),
-                    deck: String(card.deck || deckName || '')
+                    deck: String(card.deck || deckName || ''),
+                    candidateIds: candidateIds.slice(0, 12)
                 };
             });
         });
@@ -2670,8 +2676,11 @@
             const mappedEntry = normalizeCardIdentityEntry(fingerprint && identityMap ? identityMap[fingerprint] : null);
             const mappedStatsId = mappedEntry.statsId || '';
             const mappedCardId = mappedEntry.cardId || '';
-            const candidates = [...new Set([mappedStatsId, mappedCardId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
-            const matchedId = candidates.find(id => stats[id]);
+            const hasMappedEntry = !!mappedEntry.rawEntry;
+            const candidates = hasMappedEntry
+                ? [...new Set([mappedStatsId].filter(Boolean).map(String))]
+                : getCardStatsCandidates(card, stats);
+            const matchedId = mappedStatsId && stats[mappedStatsId] ? mappedStatsId : (!hasMappedEntry ? candidates.find(id => stats[id]) : '');
             if(matchedId) {
                 matchedCount++;
                 const currentStats = stats[String(card.id)];
@@ -2692,6 +2701,7 @@
                     fingerprint,
                     mappedCardId,
                     mappedStatsId,
+                    mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
                     mappedEntry: mappedEntry.rawEntry || null,
                     q: String(card.q || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 80),
                     candidates: candidates.slice(0, 8)
