@@ -1509,7 +1509,7 @@
     }
 
     function getExistingStatsIdForCard(card, stats) {
-        return getCardStatsCandidates(card, stats).find(id => stats[id]) || '';
+        return getCardStatsCandidates(card, stats).find(id => isRealNumericStatsId(id, stats)) || '';
     }
 
     function buildLegacyLibraryStatsIndex(stats) {
@@ -1639,10 +1639,10 @@
             if(!fingerprint || !card || card.id === undefined || card.id === null) return;
             const cardId = String(card.id);
             const candidateIds = getCardStatsCandidates(card, stats);
-            let statsId = candidateIds.find(id => stats[id]) || '';
+            let statsId = candidateIds.find(id => isRealNumericStatsId(id, stats)) || '';
             let statsIdSource = statsId ? 'current-candidates' : '';
             const legacyMatch = legacyIndex.byFingerprint.get(fingerprint);
-            if(legacyMatch && stats[legacyMatch.statsId]) {
+            if(legacyMatch && isRealNumericStatsId(legacyMatch.statsId, stats)) {
                 legacyFingerprintMatches++;
                 if(!statsId) {
                     statsId = legacyMatch.statsId;
@@ -2874,14 +2874,15 @@
         if(!rawEntry) return { cardId: '', statsId: '', imageSrcs: [], deck: '', rawEntry };
         if(typeof rawEntry === 'string' || typeof rawEntry === 'number') {
             const id = String(rawEntry);
-            return { cardId: id, statsId: id, imageSrcs: [], deck: '', rawEntry };
+            return { cardId: id, statsId: /^[0-9]+$/.test(id) ? id : '', imageSrcs: [], deck: '', candidateIds: [], rawEntry };
         }
         if(typeof rawEntry === 'object') {
             const cardId = rawEntry.cardId || rawEntry.id || rawEntry.yokiId || '';
-            const statsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || '';
+            const rawStatsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || '';
+            const statsId = /^[0-9]+$/.test(String(rawStatsId || '')) ? String(rawStatsId) : '';
             return {
                 cardId: cardId ? String(cardId) : '',
-                statsId: statsId ? String(statsId) : '',
+                statsId,
                 imageSrcs: Array.isArray(rawEntry.imageSrcs) ? rawEntry.imageSrcs : [],
                 deck: rawEntry.deck || '',
                 candidateIds: Array.isArray(rawEntry.candidateIds) ? rawEntry.candidateIds.map(String) : [],
@@ -2947,9 +2948,10 @@
             const candidates = hasMappedEntry
                 ? [...new Set([mappedStatsId, imageMapped.imageMappedStatsId, ...mappedEntry.candidateIds, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))]
                 : [...new Set([imageMapped.imageMappedStatsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
-            const matchedId = mappedStatsId && stats[mappedStatsId]
+            const candidateStatsHits = candidates.filter(id => isRealNumericStatsId(id, stats));
+            const matchedId = isRealNumericStatsId(mappedStatsId, stats)
                 ? mappedStatsId
-                : (imageMapped.imageMappedStatsId && stats[imageMapped.imageMappedStatsId] ? imageMapped.imageMappedStatsId : candidates.find(id => stats[id]));
+                : (isRealNumericStatsId(imageMapped.imageMappedStatsId, stats) ? imageMapped.imageMappedStatsId : candidateStatsHits[0]);
             if(matchedId) {
                 matchedCount++;
                 const currentStats = stats[String(card.id)];
@@ -2962,7 +2964,7 @@
                     copiedCount++;
                 }
                 if(matchedExamples.length < 5) {
-                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedCardId, mappedStatsId, imageMapped, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
+                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedCardId, mappedStatsId, mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'), isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats), candidateStatsHits, imageMapped, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
                 }
             } else if(failedExamples.length < 5) {
                 failedExamples.push({
@@ -2970,6 +2972,9 @@
                     fingerprint,
                     mappedCardId,
                     mappedStatsId,
+                    mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
+                    isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
+                    candidateStatsHits,
                     imageMapped,
                     mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
                     mappedEntry: mappedEntry.rawEntry || null,
@@ -3162,6 +3167,7 @@
         const mappedStatsId = mappedEntry.statsId || '';
         const mappedEntryCandidateStatus = mappedEntry.candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 }));
         const mappedEntryExistingCandidateIds = mappedEntryCandidateStatus.filter(item => item.exists).map(item => item.id);
+        const candidateStatsHits = [...new Set([...mappedEntry.candidateIds, ...candidates].filter(id => isRealNumericStatsId(id, stats)).map(String))];
         const currentExistingCandidateIds = candidates.filter(id => stats[id]);
         const legacyImageMapped = card ? findLegacyImageMappedStatsForCard(card, stats, lastLegacyImageStatsMap) : { matchedImageFile: '', imageMappedStatsId: '', imageMappedStatsExists: false };
         const legacyImageMapStatus = card ? getLegacyImageMapStatusForCard(card, lastLegacyImageStatsMap, lastLegacyImageStatsMapDiagnostics) : { currentImageInLegacyMap: false, currentImageSkippedReason: 'no-card', currentPasteImages: [] };
@@ -3216,6 +3222,9 @@
             currentFingerprint,
             mappedCardId,
             mappedStatsId,
+            mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
+            isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
+            candidateStatsHits,
             mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
             mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
             mappedEntry: mappedEntry.rawEntry || null,
