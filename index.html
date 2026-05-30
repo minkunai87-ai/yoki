@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.09-고정ID이관)</title>
+<title>Yoki (v11.10-고정ID복구이관)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -202,7 +202,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.09-고정ID이관)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.10-고정ID복구이관)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -391,7 +391,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.09-고정ID이관';
+    const APP_VERSION = 'v11.10-고정ID복구이관';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -826,6 +826,8 @@
                     console.error('[Firebase Restore ViewState Error]', viewStateError);
                 }
             }
+
+            migrateLoadedLibraryStatsToYokiIds(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore');
             
             setItemSafe('anki_last_sync_time', ts.toString());
             
@@ -890,7 +892,10 @@
         
         if (!fetchSuccess) {
             const savedLib = localStorage.getItem(STORAGE_KEY_LIBRARY);
-            if (savedLib) library = JSON.parse(savedLib);
+            if (savedLib) {
+                library = JSON.parse(savedLib);
+                migrateLoadedLibraryStatsToYokiIds('github-cache-library');
+            }
         }
         document.getElementById('loading').style.display = 'none';
     }
@@ -1115,6 +1120,35 @@
             conflictCount: report.conflicts.length
         });
     }
+
+    function migrateLoadedLibraryStatsToYokiIds(context = 'library') {
+        const stats = parseJSONSafe(localStorage.getItem(STORAGE_KEY_STATS), {});
+        const report = createYokiIdMigrationReport();
+        let statsMigrated = false;
+
+        Object.entries(library || {}).forEach(([deckName, cards]) => {
+            if(!Array.isArray(cards)) return;
+            cards.forEach(card => {
+                if(!card) return;
+                const normalizedCard = { ...card, deck: card.deck || deckName };
+                const migrated = String(normalizedCard.id || '').startsWith('yoki_')
+                    ? migrateLegacyStatsToYokiId(normalizedCard.id, normalizedCard.q, stats, report)
+                    : false;
+                if(migrated) statsMigrated = true;
+                recordYokiIdMigrationReportCard(report, normalizedCard, stats, migrated);
+            });
+        });
+
+        if(statsMigrated) {
+            localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+            isDataChanged = true;
+        }
+
+        console.log('[Yoki Fixed ID Migration Context]', context);
+        logYokiIdMigrationReport(report);
+        return statsMigrated;
+    }
+
     function escapeTsvCell(value) {
         const text = String(value ?? '').replace(/\r\n?/g, '\n');
         return /["\t\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
