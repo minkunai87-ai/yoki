@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.15-real-stats-only)</title>
+<title>Yoki (v11.18.16-storage-quota-hotfix)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.15-real-stats-only)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.16-storage-quota-hotfix)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.15-real-stats-only';
+    const APP_VERSION = 'v11.18.16-storage-quota-hotfix';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1346,8 +1346,20 @@
                 if(importResult.statsMigrated) statsMigrated = true;
                 if(importResult.mapChanged) idMapChanged = true;
             }
-            setStorageItem(STORAGE_KEY_LIBRARY, JSON.stringify(library));
-            if(statsMigrated) setStorageItem(STORAGE_KEY_STATS, JSON.stringify(savedStats));
+            try {
+                setStorageItem(STORAGE_KEY_LIBRARY, JSON.stringify(library));
+            } catch(e) {
+                console.warn('[Yoki Library Cache Save Skipped]', e);
+                showToast('저장공간 초과: 캐시 저장은 건너뛰고 카드 표시를 계속합니다.', 'error');
+            }
+            if(statsMigrated) {
+                try {
+                    setStorageItem(STORAGE_KEY_STATS, JSON.stringify(savedStats));
+                } catch(e) {
+                    console.warn('[Yoki Stats Save Skipped]', e);
+                    showToast('저장공간 초과: 학습데이터 저장은 건너뛰고 카드 표시를 계속합니다.', 'error');
+                }
+            }
             if(statsMigrated || idMapChanged) isDataChanged = true;
             logYokiIdMigrationReport(migrationReport);
             fetchSuccess = true;
@@ -1450,8 +1462,8 @@
     }
 
     function saveCardIdMap(map) {
-        try { setStorageItem(STORAGE_KEY_CARD_ID_MAP, JSON.stringify(map || {})); }
-        catch(e) { console.error('[Yoki Card ID Map Save Error]', e); }
+        console.log('[Yoki Card ID Map Save Skipped]', 'storage quota protection');
+        return;
     }
 
     function shortYokiHash(value) {
