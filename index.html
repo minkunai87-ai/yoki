@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.23-오염데이터정리)</title>
+<title>Yoki (v11.18.24-정리백업다운로드)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.23-오염데이터정리)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.24-정리백업다운로드)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.23-오염데이터정리';
+    const APP_VERSION = 'v11.18.24-정리백업다운로드';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -3199,13 +3199,53 @@
         };
     }
 
+    function downloadStatsCleanupBackup(statsBackupText, timestamp) {
+        const fileName = `yoki_stats_before_cleanup_${timestamp}.json`;
+        const blob = new Blob([statsBackupText], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return fileName;
+    }
+
+    function compactStatsForQuotaRetry(stats) {
+        Object.values(stats || {}).forEach(stat => {
+            if(!stat || typeof stat !== 'object') return;
+            delete stat._relinkedFromStatsId;
+            delete stat._relinkedBy;
+        });
+        return stats;
+    }
+
+    function saveCleanupStatsWithRetry(stats) {
+        try {
+            setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+            return { saved: true, compacted: false, error: null };
+        } catch(firstError) {
+            console.warn('[Yoki Cleanup Stats Save Retry]', firstError);
+            try {
+                compactStatsForQuotaRetry(stats);
+                setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+                return { saved: true, compacted: true, error: firstError };
+            } catch(secondError) {
+                console.error('[Yoki Cleanup Stats Save Failed]', secondError);
+                return { saved: false, compacted: true, error: secondError };
+            }
+        }
+    }
+
     function cleanupPollutedRecoveryData() {
-        let backupKey = '';
+        let backupFileName = '';
         try {
             const stats = getStatsStore();
             const statsBackupText = JSON.stringify(stats);
-            backupKey = 'yoki_stats_before_cleanup_' + Date.now();
-            localStorage.setItem(backupKey, statsBackupText);
+            backupFileName = downloadStatsCleanupBackup(statsBackupText, Date.now());
 
             const beforeStatsKeyCount = Object.keys(stats).length;
             const identityMap = lastFirebaseCardIdentityMap || {};
@@ -3302,12 +3342,13 @@
                 };
             });
 
-            setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+            const saveResult = saveCleanupStatsWithRetry(stats);
             const afterStatsKeyCount = Object.keys(stats).length;
             const sampleDeleteReasons = {};
             deletedIds.slice(0, 10).forEach(id => { sampleDeleteReasons[id] = deleteReasons[id]; });
             const result = {
-                backupKey,
+                backupFileName,
+                saveResult,
                 beforeStatsKeyCount,
                 afterStatsKeyCount,
                 deletedPollutedCurrentStatsCount: deletedIds.length,
@@ -3325,8 +3366,12 @@
                 sampleDeletedIds: result.sampleDeletedIds
             };
             console.warn('[Yoki Polluted Recovery Data Cleanup]', result);
-            showCard();
-            showToast(`🧹 오염 데이터 정리 완료: ${deletedIds.length}개 제거`, 'success');
+            if(saveResult.saved) {
+                showCard();
+                showToast(`🧹 오염 데이터 정리 완료: ${deletedIds.length}개 제거`, 'success');
+            } else {
+                showToast('저장 실패: 로컬 백업 파일은 다운로드됨', 'error');
+            }
             return result;
         } catch(e) {
             console.error('[Yoki Polluted Cleanup Error]', e);
