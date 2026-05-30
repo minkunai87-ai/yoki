@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.7-Firebase키수정)</title>
+<title>Yoki (v11.18.8-statsid복구)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.7-Firebase키수정)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.8-statsid복구)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.7-Firebase키수정';
+    const APP_VERSION = 'v11.18.8-statsid복구';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1486,21 +1486,27 @@
         return entries;
     }
 
+    function getExistingStatsIdForCard(card, stats) {
+        return getCardStatsCandidates(card, stats).find(id => stats[id]) || '';
+    }
+
     function buildLegacyLibraryStatsIndex(stats) {
         const legacyLibrary = parseJSONSafe(localStorage.getItem('anki_final_library'), {});
         const legacyEntries = collectLibraryCardEntries(legacyLibrary);
         const byFingerprint = new Map();
         legacyEntries.forEach(({ deckName, card }) => {
             if(!card || card.id === undefined || card.id === null) return;
-            const legacyStatsId = String(card.id);
-            if(!stats[legacyStatsId]) return;
+            const legacyCardId = String(card.id);
+            const legacyStatsId = getExistingStatsIdForCard(card, stats);
+            if(!legacyStatsId || !stats[legacyStatsId]) return;
             const fingerprint = getStableFingerprintForCard(card, deckName);
             if(!fingerprint || byFingerprint.has(fingerprint)) return;
             byFingerprint.set(fingerprint, {
-                statsId: legacyStatsId,
-                cardId: legacyStatsId,
+                statsId: String(legacyStatsId),
+                cardId: legacyCardId,
                 deck: String(card.deck || deckName || ''),
-                imageSrcs: getImageSrcCandidatesForCard(card)
+                imageSrcs: getImageSrcCandidatesForCard(card),
+                candidateIds: getCardStatsCandidates(card, stats).slice(0, 12)
             });
         });
         return {
@@ -1516,10 +1522,10 @@
         const map = {};
         legacyEntries.forEach(({ card }) => {
             if(!card || card.id === undefined || card.id === null) return;
-            const legacyStatsId = String(card.id);
-            if(!stats[legacyStatsId]) return;
+            const legacyStatsId = getExistingStatsIdForCard(card, stats);
+            if(!legacyStatsId || !stats[legacyStatsId]) return;
             getImageFileNamesForCard(card).forEach(fileName => {
-                if(fileName && !map[fileName]) map[fileName] = legacyStatsId;
+                if(fileName && !map[fileName]) map[fileName] = String(legacyStatsId);
             });
         });
         return map;
@@ -1541,7 +1547,9 @@
         const map = {};
         const stats = getStatsStore();
         const legacyIndex = buildLegacyLibraryStatsIndex(stats);
+        const legacyImageStatsMap = buildLegacyImageStatsMap(stats);
         let legacyFingerprintMatches = 0;
+        let legacyImageStatsMatches = 0;
         collectLibraryCardEntries(library || {}).forEach(({ deckName, card }) => {
             const fingerprint = getStableFingerprintForCard(card, deckName);
             if(!fingerprint || !card || card.id === undefined || card.id === null) return;
@@ -1557,6 +1565,14 @@
                     statsIdSource = 'anki_final_library';
                 }
             }
+            if(!statsId) {
+                const imageStatsId = getImageFileNamesForCard(card).map(fileName => legacyImageStatsMap[fileName]).find(id => id && stats[id]) || '';
+                if(imageStatsId) {
+                    legacyImageStatsMatches++;
+                    statsId = String(imageStatsId);
+                    statsIdSource = 'legacy-image-map';
+                }
+            }
             map[fingerprint] = {
                 cardId,
                 statsId: statsId ? String(statsId) : '',
@@ -1564,7 +1580,8 @@
                 legacyCardId: legacyMatch ? legacyMatch.cardId : '',
                 imageSrcs: getImageSrcCandidatesForCard(card),
                 deck: String(card.deck || deckName || ''),
-                candidateIds: candidateIds.slice(0, 12)
+                candidateIds: candidateIds.slice(0, 12),
+                imageCandidateFiles: getImageFileNamesForCard(card).slice(0, 12)
             };
         });
         const entries = Object.values(map);
@@ -1572,6 +1589,7 @@
             legacyLibraryExists: legacyIndex.legacyLibraryExists,
             legacyLibraryCardCount: legacyIndex.legacyLibraryCardCount,
             legacyFingerprintMatches,
+            legacyImageStatsMatches,
             entriesWithRealStatsId: entries.filter(entry => entry && entry.statsId && stats[entry.statsId]).length
         };
         console.log('[Yoki Card Identity Map]', { count: Object.keys(map).length, ...lastCardIdentityMapDiagnostics });
