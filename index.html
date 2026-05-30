@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.1-카드맵검증)</title>
+<title>Yoki (v11.18.2-카드맵StatsId수정)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.1-카드맵검증)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.2-카드맵StatsId수정)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.1-카드맵검증';
+    const APP_VERSION = 'v11.18.2-카드맵StatsId수정';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1000,7 +1000,7 @@
         const cardIdentityMap = buildCardIdentityMap();
         const cardIdentityMapEntries = Object.entries(cardIdentityMap);
         const cardIdentityMapSize = cardIdentityMapEntries.length;
-        const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId }));
+        const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry }));
         lastFirebaseCardIdentityMap = cardIdentityMap;
         lastFirebaseCardIdentityMapSource = 'backup-generated';
         console.log('[Yoki Firebase Backup CardIdentityMap]', { cardIdentityMapSize, sample: cardIdentityMapSample });
@@ -1426,11 +1426,20 @@
 
     function buildCardIdentityMap() {
         const map = {};
+        const stats = getStatsStore();
         Object.entries(library || {}).forEach(([deckName, cards]) => {
             if(!Array.isArray(cards)) return;
             cards.forEach(card => {
                 const fingerprint = getStableFingerprintForCard(card, deckName);
-                if(fingerprint && card && card.id !== undefined && card.id !== null) map[fingerprint] = String(card.id);
+                if(!fingerprint || !card || card.id === undefined || card.id === null) return;
+                const cardId = String(card.id);
+                const statsId = getCardStatsCandidates(card, stats).find(id => stats[id]) || cardId;
+                map[fingerprint] = {
+                    cardId,
+                    statsId: String(statsId),
+                    imageSrcs: getImageSrcCandidatesForCard(card),
+                    deck: String(card.deck || deckName || '')
+                };
             });
         });
         console.log('[Yoki Card Identity Map]', { count: Object.keys(map).length });
@@ -2627,6 +2636,26 @@
         return Array.from(byId.values());
     }
 
+    function normalizeCardIdentityEntry(rawEntry) {
+        if(!rawEntry) return { cardId: '', statsId: '', imageSrcs: [], deck: '', rawEntry };
+        if(typeof rawEntry === 'string' || typeof rawEntry === 'number') {
+            const id = String(rawEntry);
+            return { cardId: id, statsId: id, imageSrcs: [], deck: '', rawEntry };
+        }
+        if(typeof rawEntry === 'object') {
+            const cardId = rawEntry.cardId || rawEntry.id || rawEntry.yokiId || '';
+            const statsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || cardId || '';
+            return {
+                cardId: cardId ? String(cardId) : '',
+                statsId: statsId ? String(statsId) : '',
+                imageSrcs: Array.isArray(rawEntry.imageSrcs) ? rawEntry.imageSrcs : [],
+                deck: rawEntry.deck || '',
+                rawEntry
+            };
+        }
+        return { cardId: '', statsId: '', imageSrcs: [], deck: '', rawEntry };
+    }
+
     function matchRestoredFirebaseStatsToCurrentCards(context = 'firebase-restore', cardIdentityMap = {}) {
         const stats = getStatsStore();
         const identityMap = parseJSONSafe(cardIdentityMap, {});
@@ -2638,8 +2667,10 @@
 
         cards.forEach(card => {
             const fingerprint = getStableFingerprintForCard(card, card.deck || currentDeckName || '');
-            const mappedWindowsId = fingerprint && identityMap ? identityMap[fingerprint] : '';
-            const candidates = [...new Set([mappedWindowsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
+            const mappedEntry = normalizeCardIdentityEntry(fingerprint && identityMap ? identityMap[fingerprint] : null);
+            const mappedStatsId = mappedEntry.statsId || '';
+            const mappedCardId = mappedEntry.cardId || '';
+            const candidates = [...new Set([mappedStatsId, mappedCardId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
             const matchedId = candidates.find(id => stats[id]);
             if(matchedId) {
                 matchedCount++;
@@ -2653,13 +2684,15 @@
                     copiedCount++;
                 }
                 if(matchedExamples.length < 5) {
-                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedWindowsId: mappedWindowsId || '', total: Number(stats[matchedId].total) || 0 });
+                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedCardId, mappedStatsId, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
                 }
             } else if(failedExamples.length < 5) {
                 failedExamples.push({
                     cardId: String(card.id),
                     fingerprint,
-                    mappedWindowsId: mappedWindowsId || '',
+                    mappedCardId,
+                    mappedStatsId,
+                    mappedEntry: mappedEntry.rawEntry || null,
                     q: String(card.q || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 80),
                     candidates: candidates.slice(0, 8)
                 });
@@ -2840,7 +2873,9 @@
         const matchedStatsId = candidates.find(id => stats[id]) || '';
         const currentFingerprint = card ? getStableFingerprintForCard(card, card.deck || currentDeckName || '') : '';
         const cardIdentityMap = lastFirebaseCardIdentityMap || {};
-        const mappedStatsId = currentFingerprint && cardIdentityMap ? String(cardIdentityMap[currentFingerprint] || '') : '';
+        const mappedEntry = normalizeCardIdentityEntry(currentFingerprint && cardIdentityMap ? cardIdentityMap[currentFingerprint] : null);
+        const mappedCardId = mappedEntry.cardId || '';
+        const mappedStatsId = mappedEntry.statsId || '';
         const questionText = card ? String(card.q || '') : '';
         const plainQuestion = questionText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         const questionNeedle = plainQuestion.slice(0, 30).toLowerCase();
@@ -2868,10 +2903,12 @@
             cardIdentityMapSize: Object.keys(cardIdentityMap || {}).length,
             cardIdentityMapSource: lastFirebaseCardIdentityMapSource || '',
             currentFingerprint,
+            mappedCardId,
             mappedStatsId,
             mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
             mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
-            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId })),
+            mappedEntry: mappedEntry.rawEntry || null,
+            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry })),
             currentDeckName: currentDeckName || '',
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
             currentCardId: card ? String(card.id) : '',
