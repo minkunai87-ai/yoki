@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.19-cardmap-stats-mismatch)</title>
+<title>Yoki (v11.18.20-stats삭제방지)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.19-cardmap-stats-mismatch)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.20-stats삭제방지)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.19-cardmap-stats-mismatch';
+    const APP_VERSION = 'v11.18.20-stats삭제방지';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1273,12 +1273,16 @@
                 source: lastFirebaseCardIdentityMapSource
             });
             logYokiStorageDiagnostics('before-firebase-restore', targetData);
+            const existingStatsBeforeRestore = getStatsStore();
+            const restoredStatsOriginal = getBackupStatsCandidate(targetData);
+            const backupStatsKeyCount = Object.keys(restoredStatsOriginal || {}).length;
 
             const restoreField = (field, storageKey) => {
                 if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
             };
 
-            restoreField('stats', STORAGE_KEY_STATS);
+            const mergedInitialStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal };
+            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(mergedInitialStats));
             restoreField('progress', STORAGE_KEY_PROGRESS);
             restoreField('filter', STORAGE_KEY_FILTER_STATE);
             restoreField('targetRetention', STORAGE_KEY_TARGET_RETENTION);
@@ -1287,8 +1291,15 @@
             restoreField('searchQuery', STORAGE_KEY_SEARCH_QUERY);
             const restoredStatsForCheck = getStatsStore();
             const restoredStatsKeys = Object.keys(restoredStatsForCheck || {});
+            console.log('[Yoki Restore Stats Merge]', {
+                stage: 'after-initial-restore',
+                existingBeforeCount: Object.keys(existingStatsBeforeRestore || {}).length,
+                backupStatsKeyCount,
+                restoredStatsKeyCount: restoredStatsKeys.length
+            });
             lastCardIdentityMapDiagnostics = {
                 ...lastCardIdentityMapDiagnostics,
+                backupStatsKeyCount,
                 restoredStatsKeyCount: restoredStatsKeys.length,
                 restoredStatsSample20: restoredStatsKeys.slice(0, 20)
             };
@@ -1318,7 +1329,33 @@
             activeDeck = [];
             currentIndex = 0;
             await autoScanGitHub();
+            const statsAfterScan = getStatsStore();
+            console.log('[Yoki Restore Stats Merge]', {
+                stage: 'after-autoScanGitHub',
+                backupStatsKeyCount,
+                statsKeyCount: Object.keys(statsAfterScan || {}).length
+            });
             migrateLoadedLibraryStatsToYokiIds(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore');
+            const statsAfterMigration = getStatsStore();
+            const finalStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal, ...statsAfterMigration };
+            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(finalStats));
+            const finalStatsKeyCount = Object.keys(finalStats || {}).length;
+            lastCardIdentityMapDiagnostics = {
+                ...lastCardIdentityMapDiagnostics,
+                restoredStatsKeyCount: finalStatsKeyCount,
+                restoredStatsSample20: Object.keys(finalStats || {}).slice(0, 20)
+            };
+            console.log('[Yoki Restore Stats Merge]', {
+                stage: 'final-merge',
+                backupStatsKeyCount,
+                afterMigrationCount: Object.keys(statsAfterMigration || {}).length,
+                finalStatsKeyCount
+            });
+            if(finalStatsKeyCount < backupStatsKeyCount) {
+                const message = `복구 오류: stats ${backupStatsKeyCount}개 중 ${finalStatsKeyCount}개만 보존됨`;
+                console.error('[Yoki Restore Stats Shrink Error]', { backupStatsKeyCount, finalStatsKeyCount });
+                showToast(message, 'error');
+            }
             const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
             if (savedSearch && document.getElementById('search-input')) document.getElementById('search-input').value = savedSearch;
             try {
