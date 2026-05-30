@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.17-캐시저장경고숨김)</title>
+<title>Yoki (v11.18.18-stats-map일치진단)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.17-캐시저장경고숨김)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.18-stats-map일치진단)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.17-캐시저장경고숨김';
+    const APP_VERSION = 'v11.18.18-stats-map일치진단';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -3339,6 +3339,13 @@
         const currentDeck = currentDeckName || (card && card.deck) || '';
         const statsEntries = Object.entries(stats || {});
         const imageMatch = card ? findImageStatsMatchForCard(card, stats) : { imageSrcs: [], migrationBackupKeys: [], imageMatchStatsId: '', imageMatchFound: false, matches: [] };
+        const randomMappedStatsCheck = Object.entries(cardIdentityMap || {})
+            .slice(0, 20)
+            .map(([fp, entry]) => ({
+                fingerprint: fp,
+                statsId: entry && entry.statsId,
+                exists: !!(entry && entry.statsId && stats[entry.statsId])
+            }));
         const textSearchMatches = statsEntries
             .filter(([id, stat]) => {
                 const text = JSON.stringify(stat || '').toLowerCase();
@@ -3356,6 +3363,11 @@
         return {
             statsKeyCount: statsKeys.length,
             statsSampleKeys: statsKeys.slice(0, 50),
+            statsSample100: statsKeys.slice(0, 100),
+            has770226654355025: !!stats["770226654355025"],
+            hasYoki12s42vs5jg3: !!stats["yoki_12s42vs5jg3"],
+            randomMappedStatsCheck,
+            randomMappedExistsCount: randomMappedStatsCheck.filter(x => x.exists).length,
             yokiKeyCount: statsKeys.filter(key => String(key).startsWith('yoki_')).length,
             numericKeyCount: statsKeys.filter(key => /^[0-9]+$/.test(String(key))).length,
             cardIdentityMapExists: !!(cardIdentityMap && Object.keys(cardIdentityMap).length),
