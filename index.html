@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.21-백업UX개선)</title>
+<title>Yoki (v11.18.22-복구오염방지)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.21-백업UX개선)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.22-복구오염방지)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.21-백업UX개선';
+    const APP_VERSION = 'v11.18.22-복구오염방지';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -402,6 +402,7 @@
     let lastCardIdentityMapDiagnostics = {};
     let lastLegacyImageStatsMap = {};
     let lastLegacyImageStatsMapDiagnostics = {};
+    let lastRecoveryPollutionDiagnostics = {};
     
     // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'yoki_final_library';
@@ -1366,6 +1367,7 @@
             const statsAfterMigration = getStatsStore();
             const finalStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal, ...statsAfterMigration };
             setItemSafe(STORAGE_KEY_STATS, JSON.stringify(finalStats));
+            cleanupUnsafeRecoveredStats(finalStats, lastFirebaseCardIdentityMap);
             const finalStatsKeyCount = Object.keys(finalStats || {}).length;
             lastCardIdentityMapDiagnostics = {
                 ...lastCardIdentityMapDiagnostics,
@@ -2513,9 +2515,10 @@
     function grade(score) {
         const card = activeDeck[currentIndex];
         const data = getStatsStore();
-        const id = resolveStatsIdForCard(card, data);
+        const id = String(card.id);
         saveRecentDeck();
-        if(!data[id]) data[id] = { correct: 0, total: 0, lastDate: 0 };
+        const sourceStats = data[id] || findStatsForCard(card, data) || { correct: 0, total: 0, lastDate: 0 };
+        data[id] = cloneStatsForDirectMatch(sourceStats);
         
         if(!data[id].fsrs) data[id].fsrs = { D: 5.0, S: 0, reps: 0 };
         let fsrs = data[id].fsrs;
@@ -3108,6 +3111,53 @@
         };
     }
 
+    function getExactFingerprintStatsIdForCard(card, stats = getStatsStore(), identityMap = lastFirebaseCardIdentityMap) {
+        if(!card || !identityMap) return '';
+        const fingerprint = getStableFingerprintForCard(card, card.deck || currentDeckName || '');
+        const entry = normalizeCardIdentityEntry(identityMap[fingerprint]);
+        return isRealNumericStatsId(entry.statsId, stats) ? entry.statsId : '';
+    }
+
+    function collectCurrentCardIds() {
+        const ids = new Set();
+        Object.values(library || {}).forEach(cards => {
+            if(!Array.isArray(cards)) return;
+            cards.forEach(card => {
+                if(card && card.id !== undefined && card.id !== null) ids.add(String(card.id));
+            });
+        });
+        return ids;
+    }
+
+    function cleanupUnsafeRecoveredStats(stats = getStatsStore(), identityMap = lastFirebaseCardIdentityMap) {
+        const currentIds = collectCurrentCardIds();
+        const exactAllowedIds = new Set();
+        Object.entries(identityMap || {}).forEach(([fingerprint, rawEntry]) => {
+            const entry = normalizeCardIdentityEntry(rawEntry);
+            if(entry.cardId && entry.statsId && isRealNumericStatsId(entry.statsId, stats)) exactAllowedIds.add(String(entry.cardId));
+        });
+        const removed = [];
+        currentIds.forEach(cardId => {
+            if(!String(cardId).startsWith('yoki_')) return;
+            if(exactAllowedIds.has(cardId)) return;
+            const stat = stats[cardId];
+            if(!stat) return;
+            if(!stat._relinkedFromStatsId) return;
+            const hasHistory = Array.isArray(stat.history) && stat.history.length > 0;
+            if(hasHistory || Number(stat.total) > 0 || stat.lastDate || stat.dueDate) {
+                delete stats[cardId];
+                removed.push(cardId);
+            }
+        });
+        lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsCount = removed.length;
+        lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsSample = removed.slice(0, 20);
+        if(removed.length) {
+            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(stats));
+            console.warn('[Yoki Recovery Pollution Cleanup]', { removedCount: removed.length, sample: removed.slice(0, 20) });
+        }
+        return removed.length;
+    }
+
     function getLegacyImageMapStatusForCard(card, legacyImageStatsMap = lastLegacyImageStatsMap, diagnostics = lastLegacyImageStatsMapDiagnostics) {
         legacyImageStatsMap = normalizeLegacyImageStatsMap(legacyImageStatsMap);
         const allImages = getImageFileNamesForCard(card);
@@ -3181,6 +3231,11 @@
         const cards = collectRestoreMatchCards();
         let matchedCount = 0;
         let copiedCount = 0;
+        let copiedByFingerprintCount = 0;
+        let copiedByUniqueImageCount = 0;
+        let unsafeImageMatchesSkipped = 0;
+        let duplicatedStatsIdAssignments = 0;
+        const assignedStatsIds = new Map();
         const failedExamples = [];
         const matchedExamples = [];
 
@@ -3190,15 +3245,28 @@
             const mappedStatsId = mappedEntry.statsId || '';
             const mappedCardId = mappedEntry.cardId || '';
             const imageMapped = findLegacyImageMappedStatsForCard(card, stats, imageStatsMap);
+            const exactFingerprintMatch = !!(mappedEntry.rawEntry && mappedEntry.cardId && String(mappedEntry.cardId) === String(card.id) && isRealNumericStatsId(mappedStatsId, stats));
             const hasMappedEntry = !!mappedEntry.rawEntry;
             const candidates = hasMappedEntry
                 ? [...new Set([mappedStatsId, imageMapped.imageMappedStatsId, ...mappedEntry.candidateIds, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))]
                 : [...new Set([imageMapped.imageMappedStatsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
             const candidateStatsHits = candidates.filter(id => isRealNumericStatsId(id, stats));
-            const matchedId = isRealNumericStatsId(mappedStatsId, stats)
+            let matchReason = '';
+            const imageDeckMatch = !!(imageMapped.imageMappedStatsId && mappedEntry.rawEntry && mappedEntry.rawEntry.deck && card.deck && String(mappedEntry.rawEntry.deck) === String(card.deck));
+            const matchedId = exactFingerprintMatch
                 ? mappedStatsId
-                : (isRealNumericStatsId(imageMapped.imageMappedStatsId, stats) ? imageMapped.imageMappedStatsId : candidateStatsHits[0]);
+                : (imageDeckMatch && isRealNumericStatsId(imageMapped.imageMappedStatsId, stats) ? imageMapped.imageMappedStatsId : '');
+            if(exactFingerprintMatch) matchReason = 'fingerprint';
+            else if(imageDeckMatch && matchedId) matchReason = 'unique-image-deck';
+            else if(imageMapped.imageMappedStatsId) unsafeImageMatchesSkipped++;
             if(matchedId) {
+                const assignedTo = assignedStatsIds.get(matchedId);
+                if(assignedTo && assignedTo !== String(card.id) && matchReason !== 'fingerprint') {
+                    unsafeImageMatchesSkipped++;
+                    duplicatedStatsIdAssignments++;
+                    return;
+                }
+                assignedStatsIds.set(matchedId, String(card.id));
                 matchedCount++;
                 const currentStats = stats[String(card.id)];
                 const sourceStats = stats[matchedId];
@@ -3207,10 +3275,14 @@
                     && (!currentStats || ((Number(currentStats.total) || 0) === 0 && (Number(sourceStats.total) || 0) > 0));
                 if(shouldRelink) {
                     stats[String(card.id)] = cloneStatsForDirectMatch(sourceStats);
+                    stats[String(card.id)]._relinkedFromStatsId = String(matchedId);
+                    stats[String(card.id)]._relinkedBy = matchReason;
                     copiedCount++;
+                    if(matchReason === 'fingerprint') copiedByFingerprintCount++;
+                    if(matchReason === 'unique-image-deck') copiedByUniqueImageCount++;
                 }
                 if(matchedExamples.length < 5) {
-                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedCardId, mappedStatsId, mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'), isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats), candidateStatsHits, imageMapped, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
+                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), matchReason, fingerprint, mappedCardId, mappedStatsId, mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'), isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats), candidateStatsHits, imageMapped, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
                 }
             } else if(failedExamples.length < 5) {
                 failedExamples.push({
@@ -3243,9 +3315,14 @@
             legacyImageStatsMapSize: Object.keys(imageStatsMap || {}).length,
             matchedCount,
             copiedCount,
+            copiedByFingerprintCount,
+            copiedByUniqueImageCount,
+            unsafeImageMatchesSkipped,
+            duplicatedStatsIdAssignments,
             matchedExamples,
             failedExamples
         };
+        lastRecoveryPollutionDiagnostics = { ...lastRecoveryPollutionDiagnostics, copiedByFingerprintCount, copiedByUniqueImageCount, unsafeImageMatchesSkipped, duplicatedStatsIdAssignments };
         console.log('[Yoki Firebase Real Match]', result);
         return result;
     }
@@ -3364,15 +3441,17 @@
         const stats = getStatsStore();
         const card = cardOrId && typeof cardOrId === 'object' ? cardOrId : findCardById(cardOrId);
         let matchedId = resolveStatsIdForCard(card || cardOrId, stats);
-        const imageMatch = !isBooting && card && (!matchedId || !stats[matchedId]) ? findImageStatsMatchForCard(card, stats) : null;
-        if(imageMatch && imageMatch.imageMatchStatsId) matchedId = imageMatch.imageMatchStatsId;
-        const legacyImageMapped = card && (!matchedId || !stats[matchedId]) ? findLegacyImageMappedStatsForCard(card, stats, lastLegacyImageStatsMap) : null;
-        if(legacyImageMapped && legacyImageMapped.imageMappedStatsId && stats[legacyImageMapped.imageMappedStatsId]) matchedId = legacyImageMapped.imageMappedStatsId;
+        const exactFingerprintStatsId = card ? getExactFingerprintStatsIdForCard(card, stats, lastFirebaseCardIdentityMap) : '';
+        if(exactFingerprintStatsId) matchedId = exactFingerprintStatsId;
+        const imageMatch = null;
+        const legacyImageMapped = null;
         const matchedStats = matchedId && stats[matchedId] ? stats[matchedId] : null;
 
-        if(card && matchedStats && String(card.id || '') && String(card.id) !== String(matchedId) && !stats[String(card.id)]) {
+        if(card && matchedStats && exactFingerprintStatsId && String(card.id || '') && String(card.id) !== String(matchedId) && !stats[String(card.id)]) {
             try {
                 stats[String(card.id)] = cloneStatsForDirectMatch(matchedStats);
+                stats[String(card.id)]._relinkedFromStatsId = String(matchedId);
+                stats[String(card.id)]._relinkedBy = 'fingerprint';
                 setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
                 console.log('[Yoki Mobile ID Match Relink]', { cardId: String(card.id), matchedStatsId: String(matchedId), imageMatch, legacyImageMapped, candidates: getCardStatsCandidates(card, stats) });
             } catch(e) {
@@ -3477,6 +3556,12 @@
             rawImageKeyCount: lastLegacyImageStatsMapDiagnostics.rawImageKeyCount || 0,
             uniquePasteImageKeyCount: lastLegacyImageStatsMapDiagnostics.uniquePasteImageKeyCount || 0,
             duplicateImageKeyCount: lastLegacyImageStatsMapDiagnostics.duplicateImageKeyCount || 0,
+            duplicatedStatsIdAssignments: lastRecoveryPollutionDiagnostics.duplicatedStatsIdAssignments || 0,
+            sharedStatsObjectRefCount: 0,
+            unsafeImageMatchesSkipped: lastRecoveryPollutionDiagnostics.unsafeImageMatchesSkipped || 0,
+            copiedByFingerprintCount: lastRecoveryPollutionDiagnostics.copiedByFingerprintCount || 0,
+            copiedByUniqueImageCount: lastRecoveryPollutionDiagnostics.copiedByUniqueImageCount || 0,
+            cleanedUnsafeStatsCount: lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsCount || 0,
             skippedCommonImageKeyCount: lastLegacyImageStatsMapDiagnostics.skippedCommonImageKeyCount || 0,
             candidateEntryCount: lastLegacyImageStatsMapDiagnostics.candidateEntryCount || 0,
             numericStatsEntryCount: lastLegacyImageStatsMapDiagnostics.numericStatsEntryCount || 0,
