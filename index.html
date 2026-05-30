@@ -1355,6 +1355,16 @@
         ])];
     }
 
+    function getImageSrcsFromText(text) {
+        const sources = [];
+        String(text || '').replace(/src\s*=\s*["']?([^"'>\s]+)["']?/gi, (match, rawSrc) => {
+            const src = decodeHtmlEntitiesForId(rawSrc).trim().split(/[?#]/)[0];
+            if(src) sources.push(src);
+            return match;
+        });
+        return [...new Set(sources)];
+    }
+
     function getImageFileNamesFromText(text) {
         return [...new Set(getImageSrcCandidatesFromText(text)
             .map(src => String(src || '').split(/[?#]/)[0].split('/').pop() || String(src || ''))
@@ -1370,14 +1380,18 @@
     function getStableFingerprintForCard(card, deckName = '') {
         if(!card) return '';
         const deck = String(card.deck || deckName || '').replace(/::/g, '__').trim();
+        const questionImageSrcs = getImageSrcsFromText(card.q);
+        const answerImageSrcs = getImageSrcsFromText(card.a).sort();
         const questionImages = getImageFileNamesFromText(card.q);
         const answerImages = [...new Set(getImageFileNamesFromText(card.a))].sort();
         const normalizedQ = normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 280);
         const normalizedA = normalizeCardTextForId(card.a).replace(/<[^>]*>/g, ' ').slice(0, 280);
         const source = JSON.stringify({
             deck,
-            questionImage: questionImages[0] || '',
-            answerImages,
+            questionImageSrc: questionImageSrcs[0] || '',
+            answerImageSrcs,
+            questionImageFile: questionImages[0] || '',
+            answerImageFiles: answerImages,
             answerTailNumber: getAnswerTailNumberForFingerprint(card.a),
             q: normalizedQ,
             a: normalizedA
