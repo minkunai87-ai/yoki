@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.17-아이폰파베실매칭)</title>
+<title>Yoki (v11.18-파베카드매핑복구)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.17-아이폰파베실매칭)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18-파베카드매핑복구)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.17-아이폰파베실매칭';
+    const APP_VERSION = 'v11.18-파베카드매핑복구';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1004,6 +1004,7 @@
             targetRetention: getStorageItem(STORAGE_KEY_TARGET_RETENTION) || '0.90', 
             localEdits: getStorageItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
             cardIdMap: getStorageItem(STORAGE_KEY_CARD_ID_MAP) || '{}',
+            cardIdentityMap: buildCardIdentityMap(),
             searchQuery: getStorageItem(STORAGE_KEY_SEARCH_QUERY) || '',
             timestamp: metadata.backupAt,
             metadata
@@ -1165,7 +1166,7 @@
             const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
             if (savedSearch && document.getElementById('search-input')) document.getElementById('search-input').value = savedSearch;
             initApp();
-            const matchResult = matchRestoredFirebaseStatsToCurrentCards(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore');
+            const matchResult = matchRestoredFirebaseStatsToCurrentCards(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore', targetData.cardIdentityMap || {});
             if(matchResult.matchedCount > 0) {
                 showCard();
                 showToast(`☁️ 복구 완료: ${matchResult.matchedCount}개 카드 정답률 연결`, "success");
@@ -1354,10 +1355,47 @@
         ])];
     }
 
+    function getImageFileNamesFromText(text) {
+        return [...new Set(getImageSrcCandidatesFromText(text)
+            .map(src => String(src || '').split(/[?#]/)[0].split('/').pop() || String(src || ''))
+            .filter(Boolean))];
+    }
+
     function getAnswerTailNumberForFingerprint(a) {
         const plain = decodeHtmlEntitiesForId(String(a || '').replace(/<[^>]*>/g, ' ')).trim();
         const match = plain.match(/(?:^|\s)(N?\s*\d+)\s*$/i);
         return match ? match[1].replace(/\s+/g, '') : '';
+    }
+
+    function getStableFingerprintForCard(card, deckName = '') {
+        if(!card) return '';
+        const deck = String(card.deck || deckName || '').replace(/::/g, '__').trim();
+        const questionImages = getImageFileNamesFromText(card.q);
+        const answerImages = [...new Set(getImageFileNamesFromText(card.a))].sort();
+        const normalizedQ = normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 280);
+        const normalizedA = normalizeCardTextForId(card.a).replace(/<[^>]*>/g, ' ').slice(0, 280);
+        const source = JSON.stringify({
+            deck,
+            questionImage: questionImages[0] || '',
+            answerImages,
+            answerTailNumber: getAnswerTailNumberForFingerprint(card.a),
+            q: normalizedQ,
+            a: normalizedA
+        });
+        return `fp_${shortYokiHash(source)}`;
+    }
+
+    function buildCardIdentityMap() {
+        const map = {};
+        Object.entries(library || {}).forEach(([deckName, cards]) => {
+            if(!Array.isArray(cards)) return;
+            cards.forEach(card => {
+                const fingerprint = getStableFingerprintForCard(card, deckName);
+                if(fingerprint && card && card.id !== undefined && card.id !== null) map[fingerprint] = String(card.id);
+            });
+        });
+        console.log('[Yoki Card Identity Map]', { count: Object.keys(map).length });
+        return map;
     }
 
     function getLegacyFingerprints(deckName, q, a, rowIndex) {
@@ -2541,11 +2579,18 @@
                 if(card && card.id !== undefined && card.id !== null) byId.set(String(card.id), card);
             });
         });
+        Object.entries(library || {}).forEach(([deckName, cards]) => {
+            if(!Array.isArray(cards)) return;
+            cards.forEach(card => {
+                if(card && card.id !== undefined && card.id !== null) byId.set(String(card.id), { ...card, deck: card.deck || deckName });
+            });
+        });
         return Array.from(byId.values());
     }
 
-    function matchRestoredFirebaseStatsToCurrentCards(context = 'firebase-restore') {
+    function matchRestoredFirebaseStatsToCurrentCards(context = 'firebase-restore', cardIdentityMap = {}) {
         const stats = getStatsStore();
+        const identityMap = parseJSONSafe(cardIdentityMap, {});
         const cards = collectRestoreMatchCards();
         let matchedCount = 0;
         let copiedCount = 0;
@@ -2553,20 +2598,29 @@
         const matchedExamples = [];
 
         cards.forEach(card => {
-            const candidates = getCardStatsCandidates(card, stats);
+            const fingerprint = getStableFingerprintForCard(card, card.deck || currentDeckName || '');
+            const mappedWindowsId = fingerprint && identityMap ? identityMap[fingerprint] : '';
+            const candidates = [...new Set([mappedWindowsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
             const matchedId = candidates.find(id => stats[id]);
             if(matchedId) {
                 matchedCount++;
-                if(String(card.id) !== String(matchedId) && !stats[String(card.id)]) {
-                    stats[String(card.id)] = cloneStatsForDirectMatch(stats[matchedId]);
+                const currentStats = stats[String(card.id)];
+                const sourceStats = stats[matchedId];
+                const shouldRelink = String(card.id) !== String(matchedId)
+                    && sourceStats
+                    && (!currentStats || ((Number(currentStats.total) || 0) === 0 && (Number(sourceStats.total) || 0) > 0));
+                if(shouldRelink) {
+                    stats[String(card.id)] = cloneStatsForDirectMatch(sourceStats);
                     copiedCount++;
                 }
                 if(matchedExamples.length < 5) {
-                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), total: Number(stats[matchedId].total) || 0 });
+                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), fingerprint, mappedWindowsId: mappedWindowsId || '', total: Number(stats[matchedId].total) || 0 });
                 }
             } else if(failedExamples.length < 5) {
                 failedExamples.push({
                     cardId: String(card.id),
+                    fingerprint,
+                    mappedWindowsId: mappedWindowsId || '',
                     q: String(card.q || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 80),
                     candidates: candidates.slice(0, 8)
                 });
@@ -2582,6 +2636,7 @@
             context,
             totalCards: cards.length,
             statsKeyCount: Object.keys(stats).length,
+            cardIdentityMapCount: Object.keys(identityMap || {}).length,
             matchedCount,
             copiedCount,
             matchedExamples,
