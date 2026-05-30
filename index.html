@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.11-이미지맵재생성)</title>
+<title>Yoki (v11.18.12-fingerprint추적)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.11-이미지맵재생성)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.12-fingerprint추적)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.11-이미지맵재생성';
+    const APP_VERSION = 'v11.18.12-fingerprint추적';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1664,6 +1664,8 @@
                 legacyCardId: legacyMatch ? legacyMatch.cardId : '',
                 imageSrcs: getImageSrcCandidatesForCard(card),
                 deck: String(card.deck || deckName || ''),
+                questionLength: String(card.q || '').length,
+                normalizedQuestion: normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 180),
                 candidateIds: candidateIds.slice(0, 12),
                 imageCandidateFiles: getImageFileNamesForCard(card).slice(0, 12)
             };
@@ -2928,6 +2930,50 @@
         return { currentImageInLegacyMap: false, currentImageSkippedReason: `paste-image-not-in-legacy-map:${pasteImages[0]}`, currentPasteImages: pasteImages };
     }
 
+    function getFingerprintSimilarityMatches(card, cardIdentityMap = lastFirebaseCardIdentityMap) {
+        if(!card || !cardIdentityMap) return [];
+        const currentQuestion = normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 180);
+        const currentImages = getImageSrcCandidatesForCard(card);
+        const currentFiles = getImageFileNamesForCard(card);
+        const currentDeck = String(card.deck || currentDeckName || '');
+        return Object.entries(cardIdentityMap || {}).map(([fingerprint, rawEntry]) => {
+            const entry = normalizeCardIdentityEntry(rawEntry);
+            const raw = entry.rawEntry && typeof entry.rawEntry === 'object' ? entry.rawEntry : {};
+            const entryImages = Array.isArray(raw.imageSrcs) ? raw.imageSrcs.map(String) : [];
+            const entryFiles = Array.isArray(raw.imageCandidateFiles) ? raw.imageCandidateFiles.map(String) : [];
+            const normalizedQuestion = String(raw.normalizedQuestion || '');
+            const deck = String(raw.deck || entry.deck || '');
+            const imageOverlap = currentImages.filter(src => entryImages.includes(src)).length;
+            const fileOverlap = currentFiles.filter(file => entryFiles.includes(file)).length;
+            const questionPrefix = currentQuestion && normalizedQuestion ? commonPrefixLength(currentQuestion, normalizedQuestion) : 0;
+            const deckMatch = currentDeck && deck && currentDeck === deck ? 1 : 0;
+            const score = imageOverlap * 1000 + fileOverlap * 700 + deckMatch * 100 + questionPrefix;
+            return {
+                fingerprint,
+                score,
+                imageOverlap,
+                fileOverlap,
+                deckMatch: !!deckMatch,
+                questionPrefix,
+                cardId: entry.cardId,
+                statsId: entry.statsId,
+                statsIdSource: raw.statsIdSource || '',
+                deck,
+                questionLength: raw.questionLength || 0,
+                normalizedQuestion: normalizedQuestion.slice(0, 120),
+                imageSrcs: entryImages.slice(0, 5),
+                imageCandidateFiles: entryFiles.slice(0, 5)
+            };
+        }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
+    }
+
+    function commonPrefixLength(a, b) {
+        const min = Math.min(String(a || '').length, String(b || '').length);
+        let i = 0;
+        while(i < min && a[i] === b[i]) i++;
+        return i;
+    }
+
     function matchRestoredFirebaseStatsToCurrentCards(context = 'firebase-restore', cardIdentityMap = {}, legacyImageStatsMap = {}) {
         const stats = getStatsStore();
         const identityMap = parseJSONSafe(cardIdentityMap, {});
@@ -3165,6 +3211,10 @@
         const mappedEntry = normalizeCardIdentityEntry(currentFingerprint && cardIdentityMap ? cardIdentityMap[currentFingerprint] : null);
         const mappedCardId = mappedEntry.cardId || '';
         const mappedStatsId = mappedEntry.statsId || '';
+        const fingerprintExistsInBackup = !!(currentFingerprint && cardIdentityMap && cardIdentityMap[currentFingerprint]);
+        const fingerprintMatchedCardId = mappedCardId;
+        const fingerprintMatchedStatsId = mappedStatsId;
+        const fingerprintSimilarityTop5 = card ? getFingerprintSimilarityMatches(card, cardIdentityMap) : [];
         const mappedEntryCandidateStatus = mappedEntry.candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 }));
         const mappedEntryExistingCandidateIds = mappedEntryCandidateStatus.filter(item => item.exists).map(item => item.id);
         const candidateStatsHits = [...new Set([...mappedEntry.candidateIds, ...candidates].filter(id => isRealNumericStatsId(id, stats)).map(String))];
@@ -3220,6 +3270,10 @@
             legacyImageStatsMapYokiValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapYokiValueCount || 0,
             legacyImageStatsMapRealStatsValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapRealStatsValueCount || 0,
             currentFingerprint,
+            fingerprintExistsInBackup,
+            fingerprintMatchedCardId,
+            fingerprintMatchedStatsId,
+            fingerprintSimilarityTop5,
             mappedCardId,
             mappedStatsId,
             mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
@@ -3243,6 +3297,7 @@
             questionPreview: plainQuestion.slice(0, 100),
             questionPreview120: plainQuestion.slice(0, 120),
             questionLength: questionText.length,
+            normalizedQuestion: normalizeCardTextForId(card ? card.q : '').replace(/<[^>]*>/g, ' ').slice(0, 180),
             resolveCardIdDebug: card ? getResolveCardIdDebug(card.q, stats) : null,
             imageSrc: imageMatch.imageSrcs && imageMatch.imageSrcs[0] ? imageMatch.imageSrcs[0] : '',
             imageSrcs: imageMatch.imageSrcs,
