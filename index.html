@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.16-이미지ID매칭복구)</title>
+<title>Yoki (v11.16.1-부팅복구)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.16-이미지ID매칭복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.16.1-부팅복구)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.16-이미지ID매칭복구';
+    const APP_VERSION = 'v11.16.1-부팅복구';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -479,6 +479,7 @@
     let ghRepoToken = '';
     let backupTimer = null;
     let isBackupInFlight = false;
+    let isBooting = true;
     const BACKUP_DEBOUNCE_MS = 3000;
     let isDataChanged = false;
 
@@ -927,17 +928,33 @@
     }
 
     // 🔥 [수정됨] 새로고침 시 무조건 현재 기기의 로컬 데이터를 유지합니다. (자동 덮어씌우기 삭제)
-    window.onload = async function() { 
-        document.title = `Yoki (${APP_VERSION})`;
-        const versionLabel = document.getElementById('app-version-label');
-        if(versionLabel) versionLabel.innerText = `Yoki (${APP_VERSION})`;
-        updateTRButton();
-        
-        const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
-        if (savedSearch) document.getElementById('search-input').value = savedSearch;
-        
-        await autoScanGitHub(); 
-        initApp(); 
+    window.onload = async function() {
+        try {
+            document.title = `Yoki (${APP_VERSION})`;
+            const versionLabel = document.getElementById('app-version-label');
+            if(versionLabel) versionLabel.innerText = `Yoki (${APP_VERSION})`;
+            updateTRButton();
+            
+            const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
+            if (savedSearch) document.getElementById('search-input').value = savedSearch;
+            
+            await autoScanGitHub(); 
+            initApp();
+            isBooting = false;
+        } catch(e) {
+            console.error('[Yoki Boot Error]', e);
+            document.getElementById('loading').style.display = 'none';
+            try {
+                const savedLib = getStorageItem(STORAGE_KEY_LIBRARY);
+                if(savedLib) library = JSON.parse(savedLib);
+                initApp();
+                isBooting = false;
+            } catch(fallbackError) {
+                console.error('[Yoki Boot Fallback Error]', fallbackError);
+                showToast('부팅 복구 중 오류가 발생했습니다.', 'error');
+                isBooting = false;
+            }
+        }
     };
 
     async function triggerManualBackup() {
@@ -1192,16 +1209,22 @@
             if(statsMigrated || idMapChanged) isDataChanged = true;
             logYokiIdMigrationReport(migrationReport);
             fetchSuccess = true;
-        } catch (e) { console.log("GitHub 로드 실패. 무적 캐시를 사용합니다."); }
-        
-        if (!fetchSuccess) {
-            const savedLib = getStorageItem(STORAGE_KEY_LIBRARY);
-            if (savedLib) {
-                library = JSON.parse(savedLib);
-                migrateLoadedLibraryStatsToYokiIds('github-cache-library');
+        } catch (e) {
+            console.error('[Yoki Boot Error]', e);
+            console.log("GitHub 로드 실패. 무적 캐시를 사용합니다.");
+        } finally {
+            if (!fetchSuccess) {
+                try {
+                    const savedLib = getStorageItem(STORAGE_KEY_LIBRARY);
+                    if (savedLib) {
+                        library = JSON.parse(savedLib);
+                    }
+                } catch(cacheError) {
+                    console.error('[Yoki Boot Error]', cacheError);
+                }
             }
+            document.getElementById('loading').style.display = 'none';
         }
-        document.getElementById('loading').style.display = 'none';
     }
     function parseAnkiRawData(str) {
         const rows = []; let currentRow = []; let currentCell = ''; let cursor = 0; let inQuote = false;
@@ -2490,9 +2513,6 @@
         const candidates = getCardStatsCandidates(cardOrId, stats);
         const directMatch = candidates.find(id => stats[id]);
         if(directMatch) return directMatch;
-        const card = cardOrId && typeof cardOrId === 'object' ? cardOrId : findCardById(cardOrId);
-        const imageMatch = card ? findImageStatsMatchForCard(card, stats) : null;
-        if(imageMatch && imageMatch.imageMatchStatsId) return imageMatch.imageMatchStatsId;
         return candidates[0] || '';
     }
     function findStatsForCard(cardOrId, stats = getStatsStore()) {
@@ -2618,7 +2638,7 @@
         const stats = getStatsStore();
         const card = cardOrId && typeof cardOrId === 'object' ? cardOrId : findCardById(cardOrId);
         let matchedId = resolveStatsIdForCard(card || cardOrId, stats);
-        const imageMatch = card && (!matchedId || !stats[matchedId]) ? findImageStatsMatchForCard(card, stats) : null;
+        const imageMatch = !isBooting && card && (!matchedId || !stats[matchedId]) ? findImageStatsMatchForCard(card, stats) : null;
         if(imageMatch && imageMatch.imageMatchStatsId) matchedId = imageMatch.imageMatchStatsId;
         const matchedStats = matchedId && stats[matchedId] ? stats[matchedId] : null;
 
