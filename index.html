@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.12-fingerprint추적)</title>
+<title>Yoki (v11.18.13-실제Stats키검증)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.12-fingerprint추적)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.13-실제Stats키검증)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.12-fingerprint추적';
+    const APP_VERSION = 'v11.18.13-실제Stats키검증';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -444,6 +444,11 @@
 
     function getStorageKeyForRead(key) {
         const legacyKey = LEGACY_STORAGE_KEYS[key];
+        if(key === STORAGE_KEY_LIBRARY) {
+            if(!isEmptyStorageValue(localStorage.getItem(key))) return key;
+            const legacyValue = legacyKey ? localStorage.getItem(legacyKey) : null;
+            return legacyKey && isSafeYokiLibrarySnapshot(legacyValue) ? legacyKey : key;
+        }
         if(legacyKey && !isEmptyStorageValue(localStorage.getItem(legacyKey))) {
             return legacyKey;
         }
@@ -452,6 +457,7 @@
 
     function getStorageKeyForWrite(key) {
         const legacyKey = LEGACY_STORAGE_KEYS[key];
+        if(key === STORAGE_KEY_LIBRARY) return key;
         if(legacyKey && !isEmptyStorageValue(localStorage.getItem(legacyKey))) {
             return legacyKey;
         }
@@ -1021,13 +1027,17 @@
             const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry }));
             const entriesWithStatsId = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId).length;
             const entriesWithoutStatsId = cardIdentityMapSize - entriesWithStatsId;
-            const statsIdExistsCount = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId && backupStats[entry.statsId]).length;
+            const statsIdExistsCount = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId && hasStatsKey(backupStats, entry.statsId)).length;
+            const invalidStatsEntries = cardIdentityMapEntries
+                .filter(([fingerprint, entry]) => entry && entry.statsId && !hasStatsKey(backupStats, entry.statsId));
             const identityDiagnostics = {
                 ...lastCardIdentityMapDiagnostics,
                 cardIdentityMapSize,
                 entriesWithStatsId,
                 entriesWithoutStatsId,
                 statsIdExistsCount,
+                invalidStatsIdCount: invalidStatsEntries.length,
+                sampleInvalidStatsIds: invalidStatsEntries.slice(0, 10).map(([fingerprint, entry]) => ({ fingerprint, statsId: entry.statsId, cardId: entry.cardId, statsIdSource: entry.statsIdSource, candidateIds: entry.candidateIds })),
                 legacyImageStatsMapSize: legacyImageStatsEntries.length,
                 rawImageKeyCount: lastLegacyImageStatsMapDiagnostics.rawImageKeyCount || 0,
                 uniquePasteImageKeyCount: lastLegacyImageStatsMapDiagnostics.uniquePasteImageKeyCount || 0,
@@ -1309,9 +1319,12 @@
         } finally {
             if (!fetchSuccess) {
                 try {
-                    const savedLib = getStorageItem(STORAGE_KEY_LIBRARY);
-                    if (savedLib) {
+                    const savedLib = localStorage.getItem(STORAGE_KEY_LIBRARY);
+                    if (savedLib && isSafeYokiLibrarySnapshot(savedLib)) {
                         library = JSON.parse(savedLib);
+                    } else {
+                        library = {};
+                        console.log('[Yoki Cache Fallback Skipped]', 'unsafe or missing Yoki library snapshot');
                     }
                 } catch(cacheError) {
                     console.error('[Yoki Boot Error]', cacheError);
@@ -1468,7 +1481,12 @@
 
     function isRealNumericStatsId(id, stats) {
         const value = String(id || '');
-        return /^[0-9]+$/.test(value) && !!(stats && stats[value]);
+        return /^[0-9]+$/.test(value) && !!(stats && Object.prototype.hasOwnProperty.call(stats, value));
+    }
+
+    function hasStatsKey(stats, id) {
+        const value = String(id || '');
+        return !!(value && stats && Object.prototype.hasOwnProperty.call(stats, value));
     }
 
     function getAnswerTailNumberForFingerprint(a) {
@@ -1650,7 +1668,7 @@
                 }
             }
             if(!statsId) {
-                const imageStatsId = getImageFileNamesForCard(card).map(fileName => legacyImageStatsMap[fileName]).find(id => id && stats[id]) || '';
+                const imageStatsId = getImageFileNamesForCard(card).map(fileName => legacyImageStatsMap[fileName]).find(id => isRealNumericStatsId(id, stats)) || '';
                 if(imageStatsId) {
                     legacyImageStatsMatches++;
                     statsId = String(imageStatsId);
@@ -1671,12 +1689,15 @@
             };
         });
         const entries = Object.values(map);
+        const invalidEntries = entries.filter(entry => entry && entry.statsId && !hasStatsKey(stats, entry.statsId));
         lastCardIdentityMapDiagnostics = {
             legacyLibraryExists: legacyIndex.legacyLibraryExists,
             legacyLibraryCardCount: legacyIndex.legacyLibraryCardCount,
             legacyFingerprintMatches,
             legacyImageStatsMatches,
-            entriesWithRealStatsId: entries.filter(entry => entry && entry.statsId && stats[entry.statsId]).length
+            entriesWithRealStatsId: entries.filter(entry => entry && entry.statsId && hasStatsKey(stats, entry.statsId)).length,
+            invalidStatsIdCount: invalidEntries.length,
+            sampleInvalidStatsIds: invalidEntries.slice(0, 10).map(entry => ({ cardId: entry.cardId, statsId: entry.statsId, statsIdSource: entry.statsIdSource, candidateIds: entry.candidateIds }))
         };
         console.log('[Yoki Card Identity Map]', { count: Object.keys(map).length, ...lastCardIdentityMapDiagnostics });
         return map;
@@ -2934,7 +2955,7 @@
         const imageFiles = getImageFileNamesForCard(card).filter(isUniquePasteImageFileName);
         for(const imageFile of imageFiles) {
             const statsId = legacyImageStatsMap && legacyImageStatsMap[imageFile] ? String(legacyImageStatsMap[imageFile]) : '';
-            if(statsId && stats[statsId]) {
+            if(isRealNumericStatsId(statsId, stats)) {
                 return { matchedImageFile: imageFile, imageMappedStatsId: statsId, imageMappedStatsExists: true };
             }
         }
@@ -2943,7 +2964,7 @@
         return {
             matchedImageFile: firstImageFile,
             imageMappedStatsId: firstMappedId,
-            imageMappedStatsExists: !!(firstMappedId && stats[firstMappedId])
+            imageMappedStatsExists: isRealNumericStatsId(firstMappedId, stats)
         };
     }
 
@@ -3294,6 +3315,8 @@
             legacyLibraryCardCount: lastCardIdentityMapDiagnostics.legacyLibraryCardCount || 0,
             legacyFingerprintMatches: lastCardIdentityMapDiagnostics.legacyFingerprintMatches || 0,
             entriesWithRealStatsId: lastCardIdentityMapDiagnostics.entriesWithRealStatsId || 0,
+            invalidStatsIdCount: lastCardIdentityMapDiagnostics.invalidStatsIdCount || 0,
+            sampleInvalidStatsIds: lastCardIdentityMapDiagnostics.sampleInvalidStatsIds || [],
             legacyImageStatsMapSize: Object.keys(lastLegacyImageStatsMap || {}).length,
             rawImageKeyCount: lastLegacyImageStatsMapDiagnostics.rawImageKeyCount || 0,
             uniquePasteImageKeyCount: lastLegacyImageStatsMapDiagnostics.uniquePasteImageKeyCount || 0,
@@ -3320,9 +3343,9 @@
             mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
             isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
             candidateStatsHits,
-            mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
+            mappedStatsExists: hasStatsKey(stats, mappedStatsId),
             mappedStatsLookupDebug,
-            mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
+            mappedStatsTotal: hasStatsKey(stats, mappedStatsId) ? (Number(stats[mappedStatsId].total) || 0) : 0,
             mappedEntry: mappedEntry.rawEntry || null,
             mappedEntryCandidateStatus,
             mappedEntryExistingCandidateIds,
@@ -3331,8 +3354,8 @@
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
             currentCardId: card ? String(card.id) : '',
             matchedStatsId,
-            matchedTotal: matchedStatsId && stats[matchedStatsId] ? (Number(stats[matchedStatsId].total) || 0) : 0,
-            matchedHistoryLength: matchedStatsId && stats[matchedStatsId] && Array.isArray(stats[matchedStatsId].history) ? stats[matchedStatsId].history.length : 0,
+            matchedTotal: hasStatsKey(stats, matchedStatsId) ? (Number(stats[matchedStatsId].total) || 0) : 0,
+            matchedHistoryLength: hasStatsKey(stats, matchedStatsId) && Array.isArray(stats[matchedStatsId].history) ? stats[matchedStatsId].history.length : 0,
             candidateIds: candidates,
             currentExistingCandidateIds,
             candidateStatus: candidates.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 })),
