@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.11-레거시백업복구)</title>
+<title>Yoki (v11.12-백업복구디버그)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -202,7 +202,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.11-레거시백업복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.12-백업복구디버그)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -391,7 +391,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.11-레거시백업복구';
+    const APP_VERSION = 'v11.12-백업복구디버그';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -2348,20 +2348,68 @@
     }
 
     function exportData() { const d = new Date(); const fileName = `yoki_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}.json`; const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(getYokiLocalBackupData())], {type:'application/json'})); a.download=fileName; a.click(); }
+    function parseBackupField(value, fallback) {
+        try {
+            if(value === undefined || value === null || value === '') return fallback;
+            return typeof value === 'string' ? JSON.parse(value) : value;
+        } catch(e) {
+            console.error('[Yoki Local Backup Parse Error]', e);
+            return fallback;
+        }
+    }
+
+    function countStatsHistoryCards(stats) {
+        return Object.values(stats || {}).filter(item => item && Array.isArray(item.history) && item.history.length > 0).length;
+    }
+
+    function getBackupStatsCandidate(data) {
+        const candidates = [
+            data && data.stats,
+            data && data.yoki_final_stats,
+            data && data.anki_final_stats,
+            data && data[STORAGE_KEY_STATS]
+        ];
+        for(const candidate of candidates) {
+            const parsed = parseBackupField(candidate, null);
+            if(parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        }
+        return {};
+    }
+
+    function logLocalBackupDebug(data, stage, statsOverride = null) {
+        const stats = statsOverride || getBackupStatsCandidate(data || {});
+        const keys = data && typeof data === 'object' ? Object.keys(data) : [];
+        console.log('[Yoki Local Backup Debug]', stage, {
+            keys,
+            hasStats: !!(data && (data.stats || data.yoki_final_stats || data.anki_final_stats || data[STORAGE_KEY_STATS])),
+            statsKeyCount: Object.keys(stats || {}).length,
+            historyCardCount: countStatsHistoryCards(stats),
+            hasLibrary: !!(data && (data.library || data.yoki_final_library || data.anki_final_library || data[STORAGE_KEY_LIBRARY])),
+            hasViewState: !!(data && (data.viewState || data.yoki_final_view_state || data.anki_final_view_state || data[STORAGE_KEY_VIEW_STATE])),
+            appVersion: data && (data.appVersion || data.version || data.yoki_app_version),
+            appId: data && data.appId
+        });
+    }
+
     function importData(input) { 
         const reader = new FileReader(); 
         reader.onload = e => { 
             const data = JSON.parse(e.target.result); 
+            logLocalBackupDebug(data, 'read');
             if(data.appId && data.appId !== 'yoki') { showToast('Yoki 백업 파일이 아닙니다.', 'error'); return; }
-            const keysToRemove = [];
-            for(let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if(key && /^yoki/i.test(key)) keysToRemove.push(key);
-            }
-            keysToRemove.forEach(k => localStorage.removeItem(k));
+            const restoredStats = getBackupStatsCandidate(data);
+            localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(restoredStats));
             Object.keys(data).forEach(k => {
-                if(/^yoki/i.test(k)) localStorage.setItem(k, data[k]);
+                if(k === STORAGE_KEY_STATS || k === 'stats' || k === 'yoki_final_stats' || k === 'anki_final_stats') return;
+                if(/^yoki/i.test(k)) localStorage.setItem(k, typeof data[k] === 'string' ? data[k] : JSON.stringify(data[k]));
             }); 
+            const storedStats = parseBackupField(localStorage.getItem(STORAGE_KEY_STATS), {});
+            console.log('[Yoki Local Backup Restore Check]', {
+                hasStoredStats: !!localStorage.getItem(STORAGE_KEY_STATS),
+                statsKeyCount: Object.keys(storedStats || {}).length,
+                historyCardCount: countStatsHistoryCards(storedStats)
+            });
+            isDataChanged = true;
             location.reload(); 
         }; 
         reader.readAsText(input.files[0]); 
