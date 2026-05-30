@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.9-고유이미지매칭)</title>
+<title>Yoki (v11.18.10-이미지맵Stats키정정)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.9-고유이미지매칭)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.10-이미지맵Stats키정정)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.9-고유이미지매칭';
+    const APP_VERSION = 'v11.18.10-이미지맵Stats키정정';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1461,6 +1461,11 @@
         return /^paste-[^/\\]+\.(jpe?g|png|webp|gif)$/i.test(String(fileName || '').trim());
     }
 
+    function isRealNumericStatsId(id, stats) {
+        const value = String(id || '');
+        return /^[0-9]+$/.test(value) && !!(stats && stats[value]);
+    }
+
     function getAnswerTailNumberForFingerprint(a) {
         const plain = decodeHtmlEntitiesForId(String(a || '').replace(/<[^>]*>/g, ' ')).trim();
         const match = plain.match(/(?:^|\s)(N?\s*\d+)\s*$/i);
@@ -1535,10 +1540,14 @@
         const map = {};
         let rawImageKeyCount = 0;
         let skippedCommonImageKeyCount = 0;
+        let skippedNonRealStatsIdCount = 0;
         legacyEntries.forEach(({ card }) => {
             if(!card || card.id === undefined || card.id === null) return;
             const legacyStatsId = getExistingStatsIdForCard(card, stats);
-            if(!legacyStatsId || !stats[legacyStatsId]) return;
+            if(!isRealNumericStatsId(legacyStatsId, stats)) {
+                skippedNonRealStatsIdCount++;
+                return;
+            }
             getImageFileNamesForCard(card).forEach(fileName => {
                 if(!fileName) return;
                 rawImageKeyCount++;
@@ -1552,14 +1561,19 @@
         });
         const duplicateImageKeys = [];
         imageBuckets.forEach((statsIds, fileName) => {
-            if(statsIds.length === 1) map[fileName] = statsIds[0];
+            const realStatsIds = [...new Set(statsIds.filter(id => isRealNumericStatsId(id, stats)))];
+            if(realStatsIds.length === 1) map[fileName] = realStatsIds[0];
             else duplicateImageKeys.push(fileName);
         });
+        const mapValues = Object.values(map);
         lastLegacyImageStatsMapDiagnostics = {
             rawImageKeyCount,
             uniquePasteImageKeyCount: Object.keys(map).length,
             duplicateImageKeyCount: duplicateImageKeys.length,
             skippedCommonImageKeyCount,
+            skippedNonRealStatsIdCount,
+            legacyImageStatsMapYokiValueCount: mapValues.filter(id => String(id).startsWith('yoki_')).length,
+            legacyImageStatsMapRealStatsValueCount: mapValues.filter(id => isRealNumericStatsId(id, stats)).length,
             duplicateImageKeys: duplicateImageKeys.slice(0, 500)
         };
         return map;
@@ -1569,11 +1583,17 @@
         if(Array.isArray(value)) {
             const map = {};
             value.forEach(entry => {
-                if(Array.isArray(entry) && entry.length >= 2 && entry[0]) map[String(entry[0])] = String(entry[1]);
+                if(Array.isArray(entry) && entry.length >= 2 && entry[0] && !String(entry[1] || '').startsWith('yoki_')) map[String(entry[0])] = String(entry[1]);
             });
             return map;
         }
-        if(value && typeof value === 'object') return value;
+        if(value && typeof value === 'object') {
+            const map = {};
+            Object.entries(value).forEach(([key, id]) => {
+                if(key && !String(id || '').startsWith('yoki_')) map[key] = String(id);
+            });
+            return map;
+        }
         return {};
     }
 
@@ -3158,6 +3178,8 @@
             matchedImageFile: legacyImageMapped.matchedImageFile || '',
             imageMappedStatsId: legacyImageMapped.imageMappedStatsId || '',
             imageMappedStatsExists: !!legacyImageMapped.imageMappedStatsExists,
+            legacyImageStatsMapYokiValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapYokiValueCount || 0,
+            legacyImageStatsMapRealStatsValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapRealStatsValueCount || 0,
             currentFingerprint,
             mappedCardId,
             mappedStatsId,
