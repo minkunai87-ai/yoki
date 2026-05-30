@@ -2855,6 +2855,41 @@
         try { return JSON.parse(JSON.stringify(stat)); }
         catch(e) { return { ...stat }; }
     }
+
+    function getStatsLookupDebug(stats, target) {
+        target = String(target || '');
+        return {
+            target,
+            statsType: typeof stats,
+            isArray: Array.isArray(stats),
+            statsSampleKeys20: Object.keys(stats || {}).slice(0, 20),
+            existsDirect: !!(target && stats && stats[target]),
+            existsKey: !!(target && stats && Object.prototype.hasOwnProperty.call(stats, target)),
+            directValue: target && stats ? stats[target] : undefined,
+            cardsValue: target && stats && stats.cards ? stats.cards[target] : undefined,
+            cardStatsValue: target && stats && stats.cardStats ? stats.cardStats[target] : undefined,
+            keysIncludesTarget: !!(target && Object.keys(stats || {}).includes(target)),
+            hasCards: !!(stats && stats.cards),
+            hasCardStats: !!(stats && stats.cardStats),
+            cardsHasKey: !!(target && stats && stats.cards && Object.prototype.hasOwnProperty.call(stats.cards, target)),
+            cardStatsHasKey: !!(target && stats && stats.cardStats && Object.prototype.hasOwnProperty.call(stats.cardStats, target))
+        };
+    }
+
+    function logStatsLookupDebug(label, stats, target) {
+        const debug = getStatsLookupDebug(stats, target);
+        console.log(`[Yoki Stats Lookup Debug] ${label}`, debug);
+        console.log(Object.keys(stats || {}).slice(0, 20));
+        console.log(
+            stats && target ? stats[target] : undefined,
+            stats && stats.cards && target ? stats.cards[target] : undefined,
+            stats && stats.cardStats && target ? stats.cardStats[target] : undefined
+        );
+        console.log(Object.keys(stats || {}).includes(String(target || '')));
+        console.log(typeof stats, Array.isArray(stats));
+        return debug;
+    }
+
     function collectRestoreMatchCards() {
         const byId = new Map();
         [originalDeck, activeDeck].forEach(deck => {
@@ -2978,6 +3013,10 @@
         const stats = getStatsStore();
         const identityMap = parseJSONSafe(cardIdentityMap, {});
         const imageStatsMap = normalizeLegacyImageStatsMap(parseJSONSafe(legacyImageStatsMap, legacyImageStatsMap || {}));
+        const firstMappedStatsId = Object.values(identityMap || {})
+            .map(entry => normalizeCardIdentityEntry(entry).statsId)
+            .find(id => id);
+        logStatsLookupDebug(`${context}:before-match`, stats, firstMappedStatsId || '');
         const cards = collectRestoreMatchCards();
         let matchedCount = 0;
         let copiedCount = 0;
@@ -3215,6 +3254,8 @@
         const fingerprintMatchedCardId = mappedCardId;
         const fingerprintMatchedStatsId = mappedStatsId;
         const fingerprintSimilarityTop5 = card ? getFingerprintSimilarityMatches(card, cardIdentityMap) : [];
+        const mappedStatsLookupDebug = getStatsLookupDebug(stats, mappedStatsId);
+        console.log('[Yoki Current Mapped Stats Lookup]', mappedStatsLookupDebug);
         const mappedEntryCandidateStatus = mappedEntry.candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 }));
         const mappedEntryExistingCandidateIds = mappedEntryCandidateStatus.filter(item => item.exists).map(item => item.id);
         const candidateStatsHits = [...new Set([...mappedEntry.candidateIds, ...candidates].filter(id => isRealNumericStatsId(id, stats)).map(String))];
@@ -3280,6 +3321,7 @@
             isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
             candidateStatsHits,
             mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
+            mappedStatsLookupDebug,
             mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
             mappedEntry: mappedEntry.rawEntry || null,
             mappedEntryCandidateStatus,
