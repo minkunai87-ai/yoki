@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.14-부팅긴급복구)</title>
+<title>Yoki (v11.18.15-real-stats-only)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.14-부팅긴급복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.15-real-stats-only)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.14-부팅긴급복구';
+    const APP_VERSION = 'v11.18.15-real-stats-only';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1058,7 +1058,13 @@
             const legacyImageStatsEntries = Object.entries(legacyImageStatsMap || {});
             const cardIdentityMapEntries = Object.entries(cardIdentityMap);
             const cardIdentityMapSize = cardIdentityMapEntries.length;
-            const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry }));
+            const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({
+                fingerprint,
+                entry: {
+                    ...entry,
+                    statsIdExists: !!(entry && entry.statsId && hasStatsKey(backupStats, entry.statsId))
+                }
+            }));
             const entriesWithStatsId = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId).length;
             const entriesWithoutStatsId = cardIdentityMapSize - entriesWithStatsId;
             const statsIdExistsCount = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId && hasStatsKey(backupStats, entry.statsId)).length;
@@ -1702,9 +1708,15 @@
                     statsIdSource = 'legacy-image-map';
                 }
             }
+            if(statsId && !hasStatsKey(stats, statsId)) {
+                console.warn('[Yoki Card Identity Invalid StatsId Dropped]', { cardId, statsId, statsIdSource, candidateIds });
+                statsId = '';
+                statsIdSource = '';
+            }
             map[fingerprint] = {
                 cardId,
                 statsId: statsId ? String(statsId) : '',
+                statsIdExists: !!(statsId && hasStatsKey(stats, statsId)),
                 statsIdSource,
                 legacyCardId: legacyMatch ? legacyMatch.cardId : '',
                 imageSrcs: getImageSrcCandidatesForCard(card),
@@ -3376,7 +3388,13 @@
             mappedEntry: mappedEntry.rawEntry || null,
             mappedEntryCandidateStatus,
             mappedEntryExistingCandidateIds,
-            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry })),
+            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, entry]) => ({
+                fingerprint,
+                entry: {
+                    ...entry,
+                    statsIdExists: !!(entry && entry.statsId && hasStatsKey(stats, entry.statsId))
+                }
+            })),
             currentDeckName: currentDeckName || '',
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
             currentCardId: card ? String(card.id) : '',
