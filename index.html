@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.16-storage-quota-hotfix)</title>
+<title>Yoki (v11.18.17-캐시저장경고숨김)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.16-storage-quota-hotfix)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.17-캐시저장경고숨김)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.16-storage-quota-hotfix';
+    const APP_VERSION = 'v11.18.17-캐시저장경고숨김';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1350,7 +1350,6 @@
                 setStorageItem(STORAGE_KEY_LIBRARY, JSON.stringify(library));
             } catch(e) {
                 console.warn('[Yoki Library Cache Save Skipped]', e);
-                showToast('저장공간 초과: 캐시 저장은 건너뛰고 카드 표시를 계속합니다.', 'error');
             }
             if(statsMigrated) {
                 try {
