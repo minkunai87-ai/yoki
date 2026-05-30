@@ -793,26 +793,40 @@
 
     async function restoreFromFirebase(ts, isAutoPull = false) {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`); const targetData = await res.json();
+            const res = await fetch(`${FIREBASE_DB_URL}/backups/${ts}.json`);
+            if(!res.ok) throw new Error(`Firebase restore fetch failed: ${res.status}`);
+            const targetData = await res.json();
+            if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
+
+            const restoreField = (field, storageKey) => {
+                if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
+            };
+
+            restoreField('stats', STORAGE_KEY_STATS);
+            restoreField('progress', STORAGE_KEY_PROGRESS);
+            restoreField('lastDeck', STORAGE_KEY_LAST_DECK);
+            restoreField('lastDeckMode', STORAGE_KEY_LAST_DECK_MODE);
+            restoreField('filter', STORAGE_KEY_FILTER_STATE);
+            restoreField('activeIds', STORAGE_KEY_ACTIVE_IDS);
+            restoreField('currentCardId', STORAGE_KEY_CURRENT_CARD_ID);
+            restoreField('recentDecks', STORAGE_KEY_RECENT_DECKS);
+            restoreField('deckViewStates', STORAGE_KEY_DECK_VIEW_STATES);
+            restoreField('targetRetention', 'anki_target_retention');
+            restoreField('localEdits', STORAGE_KEY_LOCAL_EDITS);
+            restoreField('searchQuery', 'anki_search_query');
+
+            if(hasBackupField(targetData, 'viewState')) {
+                try {
+                    restoreViewStateToStorage(normalizeBackupViewState(targetData));
+                } catch(viewStateError) {
+                    console.error('[Firebase Restore ViewState Error]', viewStateError);
+                }
+            }
             
-            if(targetData.stats) localStorage.setItem(STORAGE_KEY_STATS, targetData.stats);
-            if(targetData.progress) localStorage.setItem(STORAGE_KEY_PROGRESS, targetData.progress);
-            if(targetData.lastDeck) localStorage.setItem(STORAGE_KEY_LAST_DECK, targetData.lastDeck);
-            if(targetData.lastDeckMode) localStorage.setItem(STORAGE_KEY_LAST_DECK_MODE, targetData.lastDeckMode);
-            if(targetData.filter) localStorage.setItem(STORAGE_KEY_FILTER_STATE, targetData.filter);
-            if(targetData.activeIds) localStorage.setItem(STORAGE_KEY_ACTIVE_IDS, targetData.activeIds); 
-            if(targetData.currentCardId) localStorage.setItem(STORAGE_KEY_CURRENT_CARD_ID, targetData.currentCardId);
-            if(targetData.viewState) restoreViewStateToStorage(normalizeBackupViewState(targetData));
-            if(targetData.recentDecks) localStorage.setItem(STORAGE_KEY_RECENT_DECKS, targetData.recentDecks);
-            if(targetData.deckViewStates) localStorage.setItem(STORAGE_KEY_DECK_VIEW_STATES, targetData.deckViewStates);
-            if(targetData.targetRetention) localStorage.setItem('anki_target_retention', targetData.targetRetention); 
-            if(targetData.localEdits) localStorage.setItem(STORAGE_KEY_LOCAL_EDITS, targetData.localEdits);
-            if(targetData.searchQuery) localStorage.setItem('anki_search_query', targetData.searchQuery);
-            
-            localStorage.setItem('anki_last_sync_time', ts.toString());
+            setItemSafe('anki_last_sync_time', ts.toString());
             
             if (!isAutoPull) {
-                localStorage.setItem('anki_restore_pending', '1');
+                setItemSafe('anki_restore_pending', '1');
                 location.reload();
             } else {
                 const savedSearch = localStorage.getItem('anki_search_query');
@@ -822,10 +836,10 @@
                 showToast("☁️ 다른 기기의 최신 데이터를 완벽하게 불러왔습니다!", "success");
             }
         } catch(e) { 
+            console.error('[Firebase Restore Error]', e);
             if(!isAutoPull) document.getElementById('fb-list-ui').innerHTML = `<div style="padding:20px; text-align:center; color:#fa5252;">복구 중 에러가 발생했습니다.</div>`; 
         }
     }
-
     // 🔥 [수정됨] 서버 백업 보관 한도를 100개로 대폭 증가
     async function cleanupOldBackups() {
         try {
@@ -1570,6 +1584,21 @@
         return `RESTORED NOW: ${deck} / ${currentSortMode}+${currentSecondarySortMode} / ${currentFilterMode} / ${position} / card:${cardId}`;
     }
 
+
+    function setItemSafe(key, value) {
+        try {
+            if(value === undefined || value === null) return true;
+            localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+            return true;
+        } catch(e) {
+            console.error('[Firebase Restore Storage Error]', key, e);
+            return false;
+        }
+    }
+
+    function hasBackupField(data, field) {
+        return !!data && Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined && data[field] !== null;
+    }
     function parseJSONSafe(value, fallback) {
         try {
             if(value === undefined || value === null || value === '') return fallback;
