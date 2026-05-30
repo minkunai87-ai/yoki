@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.22-복구오염방지)</title>
+<title>Yoki (v11.18.23-오염데이터정리)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -195,6 +195,7 @@
             <button class="btn-sub" onclick="exportData()">💾 로컬 백업 저장</button>
             <button class="btn-sub" onclick="exportYokiIdTxt()">🆔 Yoki ID 포함 txt 내보내기</button>
             <button class="btn-sub" onclick="openRecoveryDiagnostics()">🧪 복구 진단</button>
+            <button class="btn-sub" onclick="cleanupPollutedRecoveryData()">🧹 오염된 복구 데이터 정리</button>
             <button class="btn-sub" onclick="document.getElementById('backup-input').click()">📂 로컬 백업 불러오기</button>
             <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
             
@@ -203,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.22-복구오염방지)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.23-오염데이터정리)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.22-복구오염방지';
+    const APP_VERSION = 'v11.18.23-오염데이터정리';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -3158,6 +3159,183 @@
         return removed.length;
     }
 
+    function getStatsPollutionSignature(stat) {
+        if(!stat || typeof stat !== 'object') return '';
+        const history = Array.isArray(stat.history) ? stat.history : [];
+        const historyKey = history.map(item => [
+            item && item.score,
+            item && item.result,
+            item && item.type,
+            item && item.points,
+            item && item.time
+        ].join(':')).join('|');
+        return JSON.stringify({
+            total: Number(stat.total) || 0,
+            correct: Number(stat.correct) || 0,
+            lastDate: stat.lastDate || 0,
+            dueDate: stat.dueDate || '',
+            interval: stat.interval || '',
+            fsrs: stat.fsrs || null,
+            historyKey
+        });
+    }
+
+    function getExactIdentityForCurrentCard(card, deckName, stats, identityMap) {
+        const fingerprint = getStableFingerprintForCard(card, deckName || (card && card.deck) || currentDeckName || '');
+        const rawEntry = fingerprint && identityMap ? identityMap[fingerprint] : null;
+        const entry = normalizeCardIdentityEntry(rawEntry);
+        const currentId = card && card.id !== undefined && card.id !== null ? String(card.id) : '';
+        const statsIdExists = !!(entry.statsId && hasStatsKey(stats, entry.statsId));
+        const fingerprintExactMatch = !!(fingerprint && rawEntry);
+        const cardIdMatches = !!(currentId && entry.cardId && String(entry.cardId) === currentId);
+        return {
+            fingerprint,
+            entry,
+            rawEntry,
+            statsIdExists,
+            fingerprintExactMatch,
+            cardIdMatches,
+            safeExact: !!(currentId && hasStatsKey(stats, currentId) && fingerprintExactMatch && statsIdExists && (cardIdMatches || fingerprintExactMatch))
+        };
+    }
+
+    function cleanupPollutedRecoveryData() {
+        let backupKey = '';
+        try {
+            const stats = getStatsStore();
+            const statsBackupText = JSON.stringify(stats);
+            backupKey = 'yoki_stats_before_cleanup_' + Date.now();
+            localStorage.setItem(backupKey, statsBackupText);
+
+            const beforeStatsKeyCount = Object.keys(stats).length;
+            const identityMap = lastFirebaseCardIdentityMap || {};
+            const currentEntries = collectLibraryCardEntries(library || {});
+            const currentIds = new Set(currentEntries
+                .map(({ card }) => card && card.id !== undefined && card.id !== null ? String(card.id) : '')
+                .filter(Boolean));
+            const linkedStatsIdGroups = new Map();
+            const signatureGroups = new Map();
+            const metadataByCurrentId = new Map();
+
+            currentEntries.forEach(({ deckName, card }) => {
+                if(!card || card.id === undefined || card.id === null) return;
+                const currentId = String(card.id);
+                if(!hasStatsKey(stats, currentId)) return;
+                const stat = stats[currentId];
+                const identity = getExactIdentityForCurrentCard(card, deckName, stats, identityMap);
+                const relinkedFrom = String(stat && stat._relinkedFromStatsId || '');
+                const relinkedBy = String(stat && stat._relinkedBy || '');
+                const entrySource = String(identity.entry.rawEntry && identity.entry.rawEntry.statsIdSource || '');
+                const linkedStatsId = relinkedFrom || identity.entry.statsId || '';
+                const signature = getStatsPollutionSignature(stat);
+                const images = getImageFileNamesForCard(card);
+                const pasteImages = images.filter(isUniquePasteImageFileName);
+                const unsafeImageSource = /legacy-image-map|image-match|unique-image-deck/i.test(`${relinkedBy} ${entrySource}`);
+
+                if(linkedStatsId) {
+                    if(!linkedStatsIdGroups.has(linkedStatsId)) linkedStatsIdGroups.set(linkedStatsId, []);
+                    linkedStatsIdGroups.get(linkedStatsId).push(currentId);
+                }
+                if(signature && ((Number(stat.total) || 0) > 0 || (Array.isArray(stat.history) && stat.history.length))) {
+                    if(!signatureGroups.has(signature)) signatureGroups.set(signature, []);
+                    signatureGroups.get(signature).push(currentId);
+                }
+
+                metadataByCurrentId.set(currentId, {
+                    currentId,
+                    stat,
+                    identity,
+                    relinkedFrom,
+                    relinkedBy,
+                    entrySource,
+                    linkedStatsId,
+                    signature,
+                    unsafeImageSource,
+                    hasOnlyUnsafeImages: unsafeImageSource && (!pasteImages.length || pasteImages.length !== images.length),
+                    hasLearningData: (Number(stat.total) || 0) > 0 || (Array.isArray(stat.history) && stat.history.length > 0) || !!stat.lastDate || !!stat.dueDate
+                });
+            });
+
+            const duplicateLinkedStatsIds = new Set([...linkedStatsIdGroups.entries()]
+                .filter(([statsId, ids]) => statsId && ids.length > 1)
+                .map(([statsId]) => statsId));
+            const duplicateSignatures = new Set([...signatureGroups.entries()]
+                .filter(([signature, ids]) => signature && ids.length > 1)
+                .map(([signature]) => signature));
+            const duplicateStatsGroupsFound = duplicateLinkedStatsIds.size + duplicateSignatures.size;
+            const deletedIds = [];
+            const deleteReasons = {};
+
+            metadataByCurrentId.forEach(meta => {
+                const currentId = meta.currentId;
+                if(!currentIds.has(currentId)) return;
+                if(/^[0-9]+$/.test(currentId)) return;
+                if(!String(currentId).startsWith('yoki_')) return;
+
+                const hasPollutionMarker = !!(meta.relinkedFrom || meta.relinkedBy);
+                const duplicatedStatsId = meta.linkedStatsId && duplicateLinkedStatsIds.has(meta.linkedStatsId);
+                const duplicatedSignature = meta.signature && duplicateSignatures.has(meta.signature);
+                const fingerprintMismatch = !!(meta.identity.rawEntry && meta.identity.entry.cardId && String(meta.identity.entry.cardId) !== currentId);
+                const unsafeImageMatch = !!meta.hasOnlyUnsafeImages;
+                const suddenLearningData = meta.hasLearningData && !meta.identity.safeExact && (hasPollutionMarker || duplicatedStatsId || duplicatedSignature || unsafeImageMatch || fingerprintMismatch);
+                const shouldDelete = !meta.identity.safeExact && (
+                    duplicatedStatsId ||
+                    duplicatedSignature ||
+                    unsafeImageMatch ||
+                    fingerprintMismatch ||
+                    suddenLearningData ||
+                    (hasPollutionMarker && meta.hasLearningData)
+                );
+
+                if(!shouldDelete) return;
+                delete stats[currentId];
+                deletedIds.push(currentId);
+                deleteReasons[currentId] = {
+                    duplicatedStatsId: !!duplicatedStatsId,
+                    duplicatedSignature: !!duplicatedSignature,
+                    unsafeImageMatch,
+                    fingerprintMismatch,
+                    suddenLearningData,
+                    relinkedFrom: meta.relinkedFrom,
+                    relinkedBy: meta.relinkedBy,
+                    entrySource: meta.entrySource
+                };
+            });
+
+            setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+            const afterStatsKeyCount = Object.keys(stats).length;
+            const sampleDeleteReasons = {};
+            deletedIds.slice(0, 10).forEach(id => { sampleDeleteReasons[id] = deleteReasons[id]; });
+            const result = {
+                backupKey,
+                beforeStatsKeyCount,
+                afterStatsKeyCount,
+                deletedPollutedCurrentStatsCount: deletedIds.length,
+                preservedLegacyStatsCount: Object.keys(stats).filter(key => /^[0-9]+$/.test(String(key)) && !currentIds.has(String(key))).length,
+                duplicateStatsGroupsFound,
+                sampleDeletedIds: deletedIds.slice(0, 30),
+                sampleDeleteReasons
+            };
+            lastRecoveryPollutionDiagnostics = {
+                ...lastRecoveryPollutionDiagnostics,
+                manualCleanup: result,
+                deletedPollutedCurrentStatsCount: result.deletedPollutedCurrentStatsCount,
+                preservedLegacyStatsCount: result.preservedLegacyStatsCount,
+                duplicateStatsGroupsFound: result.duplicateStatsGroupsFound,
+                sampleDeletedIds: result.sampleDeletedIds
+            };
+            console.warn('[Yoki Polluted Recovery Data Cleanup]', result);
+            showCard();
+            showToast(`🧹 오염 데이터 정리 완료: ${deletedIds.length}개 제거`, 'success');
+            return result;
+        } catch(e) {
+            console.error('[Yoki Polluted Cleanup Error]', e);
+            const message = e && e.message ? e.message : String(e);
+            showToast(`정리 실패: ${message}`, 'error');
+            return null;
+        }
+    }
+
     function getLegacyImageMapStatusForCard(card, legacyImageStatsMap = lastLegacyImageStatsMap, diagnostics = lastLegacyImageStatsMapDiagnostics) {
         legacyImageStatsMap = normalizeLegacyImageStatsMap(legacyImageStatsMap);
         const allImages = getImageFileNamesForCard(card);
@@ -3562,6 +3740,11 @@
             copiedByFingerprintCount: lastRecoveryPollutionDiagnostics.copiedByFingerprintCount || 0,
             copiedByUniqueImageCount: lastRecoveryPollutionDiagnostics.copiedByUniqueImageCount || 0,
             cleanedUnsafeStatsCount: lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsCount || 0,
+            deletedPollutedCurrentStatsCount: lastRecoveryPollutionDiagnostics.deletedPollutedCurrentStatsCount || 0,
+            preservedLegacyStatsCount: lastRecoveryPollutionDiagnostics.preservedLegacyStatsCount || 0,
+            duplicateStatsGroupsFound: lastRecoveryPollutionDiagnostics.duplicateStatsGroupsFound || 0,
+            sampleDeletedIds: lastRecoveryPollutionDiagnostics.sampleDeletedIds || [],
+            manualCleanup: lastRecoveryPollutionDiagnostics.manualCleanup || null,
             skippedCommonImageKeyCount: lastLegacyImageStatsMapDiagnostics.skippedCommonImageKeyCount || 0,
             candidateEntryCount: lastLegacyImageStatsMapDiagnostics.candidateEntryCount || 0,
             numericStatsEntryCount: lastLegacyImageStatsMapDiagnostics.numericStatsEntryCount || 0,
