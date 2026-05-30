@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.14-모바일ID매칭복구)</title>
+<title>Yoki (v11.15-ID매칭원인분석)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.14-모바일ID매칭복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.15-ID매칭원인분석)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.14-모바일ID매칭복구';
+    const APP_VERSION = 'v11.15-ID매칭원인분석';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1464,6 +1464,33 @@
         }
         return String(cyrb53(normalizeCardTextForId(q)));
     }
+    function getResolveCardIdDebug(q, stats = {}) {
+        const raw = String(q || '');
+        const strippedQ = stripTitleAttributesForId(raw);
+        const normalizedQ = normalizeCardTextForId(raw);
+        const normalizedStrippedQ = normalizeCardTextForId(strippedQ);
+        const fnameMatch = raw.match(/src\s*=\s*["']?([^"'>\s]+)["']?/i);
+        const imageSrc = fnameMatch ? decodeHtmlEntitiesForId(fnameMatch[1]).trim() : '';
+        const imageFileName = imageSrc ? (imageSrc.split(/[?#]/)[0].split('/').pop() || imageSrc) : '';
+        const candidateIds = getCardIdCandidates(raw);
+        const matchedId = candidateIds.find(id => stats[id]) || '';
+        return {
+            rawLength: raw.length,
+            strippedLength: strippedQ.length,
+            normalizedLength: normalizedQ.length,
+            normalizedStrippedLength: normalizedStrippedQ.length,
+            rawHash: String(cyrb53(raw)),
+            strippedHash: String(cyrb53(strippedQ)),
+            normalizedHash: String(cyrb53(normalizedQ)),
+            normalizedStrippedHash: String(cyrb53(normalizedStrippedQ)),
+            imageSrc,
+            imageFileName,
+            candidateIds,
+            candidateExists: candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0 })),
+            matchedId,
+            fallbackId: String(cyrb53(normalizedQ))
+        };
+    }
     function processAnkiText(text, filename, stats, migrationReport = null) {
         const rows = parseAnkiRawData(text);
         let deck = filename.replace('.txt', '');
@@ -2493,8 +2520,28 @@
         const card = activeDeck[currentIndex] || null;
         const candidates = card ? getCardStatsCandidates(card, stats) : [];
         const matchedStatsId = candidates.find(id => stats[id]) || '';
+        const questionText = card ? String(card.q || '') : '';
+        const plainQuestion = questionText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const questionNeedle = plainQuestion.slice(0, 30).toLowerCase();
+        const currentDeck = currentDeckName || (card && card.deck) || '';
+        const statsEntries = Object.entries(stats || {});
+        const textSearchMatches = statsEntries
+            .filter(([id, stat]) => {
+                const text = JSON.stringify(stat || '').toLowerCase();
+                return questionNeedle && text.includes(questionNeedle);
+            })
+            .slice(0, 20)
+            .map(([id, stat]) => ({ id, total: Number(stat && stat.total) || 0, historyLength: Array.isArray(stat && stat.history) ? stat.history.length : 0 }));
+        const deckSearchMatches = statsEntries
+            .filter(([id, stat]) => {
+                const text = JSON.stringify(stat || '').toLowerCase();
+                return currentDeck && text.includes(String(currentDeck).toLowerCase());
+            })
+            .slice(0, 20)
+            .map(([id, stat]) => ({ id, total: Number(stat && stat.total) || 0, historyLength: Array.isArray(stat && stat.history) ? stat.history.length : 0 }));
         return {
             statsKeyCount: Object.keys(stats).length,
+            statsSampleKeys: Object.keys(stats).slice(0, 20),
             currentDeckName: currentDeckName || '',
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
             currentCardId: card ? String(card.id) : '',
@@ -2502,7 +2549,19 @@
             matchedTotal: matchedStatsId && stats[matchedStatsId] ? (Number(stats[matchedStatsId].total) || 0) : 0,
             matchedHistoryLength: matchedStatsId && stats[matchedStatsId] && Array.isArray(stats[matchedStatsId].history) ? stats[matchedStatsId].history.length : 0,
             candidateIds: candidates,
-            questionPreview: card ? String(card.q || '').replace(/<[^>]*>/g, ' ').slice(0, 120) : ''
+            candidateStatus: candidates.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 })),
+            questionPreview: plainQuestion.slice(0, 100),
+            questionPreview120: plainQuestion.slice(0, 120),
+            questionLength: questionText.length,
+            resolveCardIdDebug: card ? getResolveCardIdDebug(card.q, stats) : null,
+            textSearch: {
+                needle: questionNeedle,
+                matches: textSearchMatches
+            },
+            deckSearch: {
+                deck: currentDeck,
+                matches: deckSearchMatches
+            }
         };
     }
     function openRecoveryDiagnostics() {
