@@ -2794,12 +2794,13 @@
         }
         if(typeof rawEntry === 'object') {
             const cardId = rawEntry.cardId || rawEntry.id || rawEntry.yokiId || '';
-            const statsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || cardId || '';
+            const statsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || '';
             return {
                 cardId: cardId ? String(cardId) : '',
                 statsId: statsId ? String(statsId) : '',
                 imageSrcs: Array.isArray(rawEntry.imageSrcs) ? rawEntry.imageSrcs : [],
                 deck: rawEntry.deck || '',
+                candidateIds: Array.isArray(rawEntry.candidateIds) ? rawEntry.candidateIds.map(String) : [],
                 rawEntry
             };
         }
@@ -2842,11 +2843,11 @@
             const imageMapped = findLegacyImageMappedStatsForCard(card, stats, imageStatsMap);
             const hasMappedEntry = !!mappedEntry.rawEntry;
             const candidates = hasMappedEntry
-                ? [...new Set([mappedStatsId, imageMapped.imageMappedStatsId].filter(Boolean).map(String))]
+                ? [...new Set([mappedStatsId, imageMapped.imageMappedStatsId, ...mappedEntry.candidateIds, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))]
                 : [...new Set([imageMapped.imageMappedStatsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
             const matchedId = mappedStatsId && stats[mappedStatsId]
                 ? mappedStatsId
-                : (imageMapped.imageMappedStatsId && stats[imageMapped.imageMappedStatsId] ? imageMapped.imageMappedStatsId : (!hasMappedEntry ? candidates.find(id => stats[id]) : ''));
+                : (imageMapped.imageMappedStatsId && stats[imageMapped.imageMappedStatsId] ? imageMapped.imageMappedStatsId : candidates.find(id => stats[id]));
             if(matchedId) {
                 matchedCount++;
                 const currentStats = stats[String(card.id)];
@@ -3048,6 +3049,7 @@
     }
     function getRecoveryDiagnostics() {
         const stats = getStatsStore();
+        const statsKeys = Object.keys(stats || {});
         const card = activeDeck[currentIndex] || null;
         const candidates = card ? getCardStatsCandidates(card, stats) : [];
         const matchedStatsId = candidates.find(id => stats[id]) || '';
@@ -3056,6 +3058,9 @@
         const mappedEntry = normalizeCardIdentityEntry(currentFingerprint && cardIdentityMap ? cardIdentityMap[currentFingerprint] : null);
         const mappedCardId = mappedEntry.cardId || '';
         const mappedStatsId = mappedEntry.statsId || '';
+        const mappedEntryCandidateStatus = mappedEntry.candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 }));
+        const mappedEntryExistingCandidateIds = mappedEntryCandidateStatus.filter(item => item.exists).map(item => item.id);
+        const currentExistingCandidateIds = candidates.filter(id => stats[id]);
         const legacyImageMapped = card ? findLegacyImageMappedStatsForCard(card, stats, lastLegacyImageStatsMap) : { matchedImageFile: '', imageMappedStatsId: '', imageMappedStatsExists: false };
         const questionText = card ? String(card.q || '') : '';
         const plainQuestion = questionText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -3078,8 +3083,10 @@
             .slice(0, 20)
             .map(([id, stat]) => ({ id, total: Number(stat && stat.total) || 0, historyLength: Array.isArray(stat && stat.history) ? stat.history.length : 0 }));
         return {
-            statsKeyCount: Object.keys(stats).length,
-            statsSampleKeys: Object.keys(stats).slice(0, 20),
+            statsKeyCount: statsKeys.length,
+            statsSampleKeys: statsKeys.slice(0, 50),
+            yokiKeyCount: statsKeys.filter(key => String(key).startsWith('yoki_')).length,
+            numericKeyCount: statsKeys.filter(key => /^[0-9]+$/.test(String(key))).length,
             cardIdentityMapExists: !!(cardIdentityMap && Object.keys(cardIdentityMap).length),
             cardIdentityMapSize: Object.keys(cardIdentityMap || {}).length,
             cardIdentityMapSource: lastFirebaseCardIdentityMapSource || '',
@@ -3097,6 +3104,8 @@
             mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
             mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
             mappedEntry: mappedEntry.rawEntry || null,
+            mappedEntryCandidateStatus,
+            mappedEntryExistingCandidateIds,
             cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, entry]) => ({ fingerprint, entry })),
             currentDeckName: currentDeckName || '',
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
@@ -3105,6 +3114,7 @@
             matchedTotal: matchedStatsId && stats[matchedStatsId] ? (Number(stats[matchedStatsId].total) || 0) : 0,
             matchedHistoryLength: matchedStatsId && stats[matchedStatsId] && Array.isArray(stats[matchedStatsId].history) ? stats[matchedStatsId].history.length : 0,
             candidateIds: candidates,
+            currentExistingCandidateIds,
             candidateStatus: candidates.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 })),
             questionPreview: plainQuestion.slice(0, 100),
             questionPreview120: plainQuestion.slice(0, 120),
