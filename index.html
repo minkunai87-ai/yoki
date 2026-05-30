@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.12-백업복구디버그)</title>
+<title>Yoki (v11.12-용량진단)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -202,7 +202,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.12-백업복구디버그)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.12-용량진단)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -391,7 +391,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.12-백업복구디버그';
+    const APP_VERSION = 'v11.12-용량진단';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -472,6 +472,91 @@
             platform: detectPlatform(),
             version: APP_VERSION
         };
+    }
+
+    function getStorageSizeKb(value) {
+        const text = value === undefined || value === null ? '' : String(value);
+        return Math.round((new Blob([text]).size / 1024) * 10) / 10;
+    }
+
+    function getLocalStorageUsageKb() {
+        let total = 0;
+        try {
+            for(let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if(!key) continue;
+                total += new Blob([key, localStorage.getItem(key) || '']).size;
+            }
+        } catch(e) {
+            console.error('[Yoki Storage Usage Error]', e);
+        }
+        return Math.round((total / 1024) * 10) / 10;
+    }
+
+    function getBackupFieldString(data, field) {
+        if(!data || !Object.prototype.hasOwnProperty.call(data, field)) return '';
+        const value = data[field];
+        return typeof value === 'string' ? value : JSON.stringify(value || {});
+    }
+
+    function getYokiCardIdMapDiagnostics(rawMap) {
+        const map = parseLegacyStorageJSON(rawMap, {});
+        const keys = Object.keys(map || {});
+        const values = keys.map(key => String(map[key] || ''));
+        const uniqueValues = new Set(values);
+        const byValue = {};
+        values.forEach(value => { byValue[value] = (byValue[value] || 0) + 1; });
+        const duplicateValueGroups = Object.values(byValue).filter(count => count > 1).length;
+        return {
+            keyCount: keys.length,
+            uniqueYokiIdCount: uniqueValues.size,
+            duplicateMappingCount: Math.max(0, keys.length - uniqueValues.size),
+            duplicateValueGroups,
+            legacyFingerprintCounts: {
+                imgnum: keys.filter(key => key.startsWith('imgnum|')).length,
+                qa: keys.filter(key => key.startsWith('qa|')).length,
+                rowq: keys.filter(key => key.startsWith('rowq|')).length,
+                other: keys.filter(key => !/^(imgnum|qa|rowq)\|/.test(key)).length
+            }
+        };
+    }
+
+    function getStatsHistoryDiagnostics(rawStats) {
+        const stats = parseLegacyStorageJSON(rawStats, {});
+        const historyLengths = Object.entries(stats || {}).map(([id, stat]) => ({
+            id,
+            length: Array.isArray(stat && stat.history) ? stat.history.length : 0,
+            total: Number(stat && stat.total) || 0
+        }));
+        const sorted = historyLengths.slice().sort((a, b) => b.length - a.length);
+        const lengths = historyLengths.map(item => item.length).sort((a, b) => a - b);
+        const percentile = (p) => {
+            if(!lengths.length) return 0;
+            return lengths[Math.min(lengths.length - 1, Math.floor((lengths.length - 1) * p))];
+        };
+        return {
+            statsKeyCount: historyLengths.length,
+            historyCardCount: historyLengths.filter(item => item.length > 0).length,
+            maxHistoryLength: sorted[0] ? sorted[0].length : 0,
+            p50HistoryLength: percentile(0.5),
+            p90HistoryLength: percentile(0.9),
+            p99HistoryLength: percentile(0.99),
+            over100HistoryCards: historyLengths.filter(item => item.length > 100).length,
+            over500HistoryCards: historyLengths.filter(item => item.length > 500).length,
+            topHistoryCards: sorted.slice(0, 10)
+        };
+    }
+
+    function logYokiStorageDiagnostics(context, data = null) {
+        const statsRaw = data ? getBackupFieldString(data, 'stats') : (localStorage.getItem(STORAGE_KEY_STATS) || '');
+        const cardIdMapRaw = data ? getBackupFieldString(data, 'cardIdMap') : (localStorage.getItem(STORAGE_KEY_CARD_ID_MAP) || '');
+        console.log('[Yoki Storage Size]', context, {
+            statsKb: getStorageSizeKb(statsRaw),
+            cardIdMapKb: getStorageSizeKb(cardIdMapRaw),
+            totalLocalStorageKb: getLocalStorageUsageKb()
+        });
+        console.log('[Yoki Card ID Map Diagnostics]', context, getYokiCardIdMapDiagnostics(cardIdMapRaw));
+        console.log('[Yoki Stats History Diagnostics]', context, getStatsHistoryDiagnostics(statsRaw));
     }
 
     function parseLegacyStorageJSON(value, fallback) {
@@ -978,6 +1063,7 @@
             const targetData = await res.json();
             if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
             if(!isYokiBackupRecord(targetData, backupPath)) throw new Error(`Blocked non-Yoki backup restore: ${targetData.appId || 'unknown'}`);
+            logYokiStorageDiagnostics('before-firebase-restore', targetData);
 
             const restoreField = (field, storageKey) => {
                 if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
@@ -993,14 +1079,10 @@
             targetRetention = parseFloat(localStorage.getItem(STORAGE_KEY_TARGET_RETENTION)) || 0.90;
             updateTRButton();
 
-            localStorage.removeItem(STORAGE_KEY_LIBRARY);
-            localStorage.removeItem(STORAGE_KEY_ACTIVE_IDS);
-            localStorage.removeItem(STORAGE_KEY_CURRENT_CARD_ID);
-            localStorage.removeItem(STORAGE_KEY_VIEW_STATE);
-            localStorage.removeItem(STORAGE_KEY_RECENT_DECKS);
-            localStorage.removeItem(STORAGE_KEY_DECK_VIEW_STATES);
+            console.log('[Yoki Restore Diagnostic]', 'no localStorage deletion, compression, or truncation applied');
 
             setItemSafe(STORAGE_KEY_LAST_SYNC_TIME, ts.toString());
+            logYokiStorageDiagnostics('after-firebase-restore');
             library = {};
             originalDeck = [];
             activeDeck = [];
@@ -1449,7 +1531,7 @@
     function initApp() {
         renderRecentDecks();
         const isHistoryRestore = localStorage.getItem(STORAGE_KEY_RESTORE_PENDING) === '1';
-        if(isHistoryRestore) localStorage.removeItem(STORAGE_KEY_RESTORE_PENDING);
+        if(isHistoryRestore) localStorage.setItem(STORAGE_KEY_RESTORE_PENDING, '0');
         const savedViewState = parseJSONSafe(localStorage.getItem(STORAGE_KEY_VIEW_STATE), {});
         if(!isHistoryRestore && savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
         if(!isHistoryRestore && savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
