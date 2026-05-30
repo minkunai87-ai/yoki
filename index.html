@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.18-stats-map일치진단)</title>
+<title>Yoki (v11.18.19-cardmap-stats-mismatch)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.18-stats-map일치진단)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.19-cardmap-stats-mismatch)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.18-stats-map일치진단';
+    const APP_VERSION = 'v11.18.19-cardmap-stats-mismatch';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1072,6 +1072,8 @@
                 .filter(([fingerprint, entry]) => entry && entry.statsId && !hasStatsKey(backupStats, entry.statsId));
             const identityDiagnostics = {
                 ...lastCardIdentityMapDiagnostics,
+                backupStatsKeyCount: Object.keys(backupStats || {}).length,
+                backupStatsSample20: Object.keys(backupStats || {}).slice(0, 20),
                 cardIdentityMapSize,
                 entriesWithStatsId,
                 entriesWithoutStatsId,
@@ -1283,6 +1285,27 @@
             restoreField('localEdits', STORAGE_KEY_LOCAL_EDITS);
             restoreField('cardIdMap', STORAGE_KEY_CARD_ID_MAP);
             restoreField('searchQuery', STORAGE_KEY_SEARCH_QUERY);
+            const restoredStatsForCheck = getStatsStore();
+            const restoredStatsKeys = Object.keys(restoredStatsForCheck || {});
+            lastCardIdentityMapDiagnostics = {
+                ...lastCardIdentityMapDiagnostics,
+                restoredStatsKeyCount: restoredStatsKeys.length,
+                restoredStatsSample20: restoredStatsKeys.slice(0, 20)
+            };
+            const mismatchExamples = Object.entries(lastFirebaseCardIdentityMap || {})
+                .map(([fingerprint, entry]) => ({ fingerprint, entry: normalizeCardIdentityEntry(entry) }))
+                .filter(item => item.entry.statsId && item.entry.rawEntry && item.entry.rawEntry.statsIdExists === true && !hasStatsKey(restoredStatsForCheck, item.entry.statsId))
+                .slice(0, 10)
+                .map(item => ({ fingerprint: item.fingerprint, statsId: item.entry.statsId, cardId: item.entry.cardId }));
+            if(mismatchExamples.length) {
+                console.warn('[CARDMAP/STATS MISMATCH]', {
+                    backupStatsKeyCount: lastCardIdentityMapDiagnostics.backupStatsKeyCount,
+                    backupStatsSample20: lastCardIdentityMapDiagnostics.backupStatsSample20,
+                    restoredStatsKeyCount: lastCardIdentityMapDiagnostics.restoredStatsKeyCount,
+                    restoredStatsSample20: lastCardIdentityMapDiagnostics.restoredStatsSample20,
+                    mismatchExamples
+                });
+            }
             targetRetention = parseFloat(getStorageItem(STORAGE_KEY_TARGET_RETENTION)) || 0.90;
             updateTRButton();
 
@@ -1724,6 +1747,7 @@
                 statsId = '';
                 statsIdSource = '';
             }
+            if(statsId) console.log('[CARDMAP BUILD]', statsId, !!stats[statsId], hasStatsKey(stats, statsId));
             map[fingerprint] = {
                 cardId,
                 statsId: statsId ? String(statsId) : '',
@@ -3373,6 +3397,10 @@
             cardIdentityMapExists: !!(cardIdentityMap && Object.keys(cardIdentityMap).length),
             cardIdentityMapSize: Object.keys(cardIdentityMap || {}).length,
             cardIdentityMapSource: lastFirebaseCardIdentityMapSource || '',
+            backupStatsKeyCount: lastCardIdentityMapDiagnostics.backupStatsKeyCount || 0,
+            backupStatsSample20: lastCardIdentityMapDiagnostics.backupStatsSample20 || [],
+            restoredStatsKeyCount: lastCardIdentityMapDiagnostics.restoredStatsKeyCount || statsKeys.length,
+            restoredStatsSample20: lastCardIdentityMapDiagnostics.restoredStatsSample20 || statsKeys.slice(0, 20),
             legacyLibraryExists: !!lastCardIdentityMapDiagnostics.legacyLibraryExists,
             legacyLibraryCardCount: lastCardIdentityMapDiagnostics.legacyLibraryCardCount || 0,
             legacyFingerprintMatches: lastCardIdentityMapDiagnostics.legacyFingerprintMatches || 0,
