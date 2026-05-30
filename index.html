@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18-파베카드매핑복구)</title>
+<title>Yoki (v11.18.1-카드맵검증)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18-파베카드매핑복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.1-카드맵검증)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,11 +392,13 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18-파베카드매핑복구';
+    const APP_VERSION = 'v11.18.1-카드맵검증';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let currentFilterMode = 'default', currentSortMode = 'original', currentSecondarySortMode = 'none', imageMap = new Map();
+    let lastFirebaseCardIdentityMap = {};
+    let lastFirebaseCardIdentityMapSource = '';
     
     // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'yoki_final_library';
@@ -995,6 +997,20 @@
         updateCloudIcon('active');
         persistCurrentViewState(false);
         const metadata = getBackupMetadata();
+        const cardIdentityMap = buildCardIdentityMap();
+        const cardIdentityMapEntries = Object.entries(cardIdentityMap);
+        const cardIdentityMapSize = cardIdentityMapEntries.length;
+        const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId }));
+        lastFirebaseCardIdentityMap = cardIdentityMap;
+        lastFirebaseCardIdentityMapSource = 'backup-generated';
+        console.log('[Yoki Firebase Backup CardIdentityMap]', { cardIdentityMapSize, sample: cardIdentityMapSample });
+        if(!isAuto) showToast(`🧭 카드맵 ${cardIdentityMapSize}개 생성`, cardIdentityMapSize > 0 ? 'normal' : 'error');
+        if(cardIdentityMapSize === 0) {
+            updateCloudIcon('error');
+            console.error('[Yoki Firebase Backup Blocked]', 'cardIdentityMapSize is 0');
+            if(!isAuto) showToast('❌ 카드맵이 0개라 백업을 중단했습니다.', 'error');
+            return false;
+        }
         const data = { 
             appId: 'yoki',
             appVersion: APP_VERSION,
@@ -1004,7 +1020,7 @@
             targetRetention: getStorageItem(STORAGE_KEY_TARGET_RETENTION) || '0.90', 
             localEdits: getStorageItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
             cardIdMap: getStorageItem(STORAGE_KEY_CARD_ID_MAP) || '{}',
-            cardIdentityMap: buildCardIdentityMap(),
+            cardIdentityMap,
             searchQuery: getStorageItem(STORAGE_KEY_SEARCH_QUERY) || '',
             timestamp: metadata.backupAt,
             metadata
@@ -1137,6 +1153,15 @@
             const targetData = await res.json();
             if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
             if(!isYokiBackupRecord(targetData, backupPath)) throw new Error(`Blocked non-Yoki backup restore: ${targetData.appId || 'unknown'}`);
+            const restoredCardIdentityMap = parseJSONSafe(targetData.cardIdentityMap, {});
+            lastFirebaseCardIdentityMap = restoredCardIdentityMap && typeof restoredCardIdentityMap === 'object' ? restoredCardIdentityMap : {};
+            lastFirebaseCardIdentityMapSource = `${backupPath}/${ts}`;
+            console.log('[Yoki Firebase Restore CardIdentityMap]', {
+                exists: !!targetData.cardIdentityMap,
+                size: Object.keys(lastFirebaseCardIdentityMap || {}).length,
+                sample: Object.entries(lastFirebaseCardIdentityMap || {}).slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId })),
+                source: lastFirebaseCardIdentityMapSource
+            });
             logYokiStorageDiagnostics('before-firebase-restore', targetData);
 
             const restoreField = (field, storageKey) => {
@@ -1166,7 +1191,7 @@
             const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
             if (savedSearch && document.getElementById('search-input')) document.getElementById('search-input').value = savedSearch;
             initApp();
-            const matchResult = matchRestoredFirebaseStatsToCurrentCards(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore', targetData.cardIdentityMap || {});
+            const matchResult = matchRestoredFirebaseStatsToCurrentCards(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore', lastFirebaseCardIdentityMap);
             if(matchResult.matchedCount > 0) {
                 showCard();
                 showToast(`☁️ 복구 완료: ${matchResult.matchedCount}개 카드 정답률 연결`, "success");
@@ -2813,6 +2838,9 @@
         const card = activeDeck[currentIndex] || null;
         const candidates = card ? getCardStatsCandidates(card, stats) : [];
         const matchedStatsId = candidates.find(id => stats[id]) || '';
+        const currentFingerprint = card ? getStableFingerprintForCard(card, card.deck || currentDeckName || '') : '';
+        const cardIdentityMap = lastFirebaseCardIdentityMap || {};
+        const mappedStatsId = currentFingerprint && cardIdentityMap ? String(cardIdentityMap[currentFingerprint] || '') : '';
         const questionText = card ? String(card.q || '') : '';
         const plainQuestion = questionText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         const questionNeedle = plainQuestion.slice(0, 30).toLowerCase();
@@ -2836,6 +2864,14 @@
         return {
             statsKeyCount: Object.keys(stats).length,
             statsSampleKeys: Object.keys(stats).slice(0, 20),
+            cardIdentityMapExists: !!(cardIdentityMap && Object.keys(cardIdentityMap).length),
+            cardIdentityMapSize: Object.keys(cardIdentityMap || {}).length,
+            cardIdentityMapSource: lastFirebaseCardIdentityMapSource || '',
+            currentFingerprint,
+            mappedStatsId,
+            mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
+            mappedStatsTotal: mappedStatsId && stats[mappedStatsId] ? (Number(stats[mappedStatsId].total) || 0) : 0,
+            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId })),
             currentDeckName: currentDeckName || '',
             currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
             currentCardId: card ? String(card.id) : '',
