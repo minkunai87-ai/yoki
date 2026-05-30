@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.20-stats삭제방지)</title>
+<title>Yoki (v11.18.21-백업UX개선)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -203,7 +203,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.20-stats삭제방지)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.21-백업UX개선)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -392,7 +392,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.20-stats삭제방지';
+    const APP_VERSION = 'v11.18.21-백업UX개선';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1190,16 +1190,43 @@
 
     async function fetchBackupRecordsFromPath(path, label) {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}${path}.json?_t=${Date.now()}`);
+            const res = await fetch(`${FIREBASE_DB_URL}${path}.json?shallow=true&_t=${Date.now()}`);
             if(!res.ok) return [];
             const data = await res.json();
             if(!data || typeof data !== 'object') return [];
-            return Object.entries(data)
-                .filter(([ts, backup]) => /^\d+$/.test(String(ts)) && isYokiBackupRecord(backup, path))
-                .map(([ts, backup]) => ({ ts, data: backup, path, label }));
+            const keys = Object.keys(data)
+                .filter(ts => /^\d+$/.test(String(ts)))
+                .sort((a, b) => Number(b) - Number(a))
+                .slice(0, 100);
+            const summaries = await Promise.all(keys.map(ts => fetchBackupSummaryFromPath(path, label, ts)));
+            return summaries.filter(record => record && isYokiBackupRecord(record.data, path));
         } catch(e) {
             console.error('[Firebase Backup List Error]', path, e);
             return [];
+        }
+    }
+
+    async function fetchBackupSummaryFromPath(path, label, ts) {
+        try {
+            const fields = await Promise.all([
+                fetch(`${FIREBASE_DB_URL}${path}/${ts}/appId.json?_t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+                fetch(`${FIREBASE_DB_URL}${path}/${ts}/appVersion.json?_t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+                fetch(`${FIREBASE_DB_URL}${path}/${ts}/version.json?_t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+                fetch(`${FIREBASE_DB_URL}${path}/${ts}/title.json?_t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null),
+                fetch(`${FIREBASE_DB_URL}${path}/${ts}/metadata.json?_t=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null)
+            ]);
+            const data = {
+                appId: fields[0],
+                appVersion: fields[1],
+                version: fields[2],
+                title: fields[3],
+                metadata: fields[4]
+            };
+            if(path === FIREBASE_BACKUP_PATH && !data.appId) data.appId = 'yoki';
+            return { ts, data, path, label };
+        } catch(e) {
+            console.error('[Firebase Backup Summary Error]', path, ts, e);
+            return null;
         }
     }
 
@@ -1367,6 +1394,8 @@
             }
             console.log('[Yoki Restore Match Disabled]', APP_VERSION);
             showCard();
+            const fbModal = document.getElementById('fb-modal');
+            if(fbModal) fbModal.style.display = 'none';
             showToast("☁️ 복구 완료: 카드 로드 우선 모드", "success");
         } catch(e) { 
             console.error('[Firebase Restore Error]', e);
