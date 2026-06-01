@@ -2375,13 +2375,32 @@
 
     function findCardLocationInViewContext(viewState = {}, cardId) {
         const targetId = String(cardId || '');
-        const deck = String(viewState.deck || viewState.currentDeckName || '').replace(/__$/, '');
+        const deck = String(viewState.selectedDeckPath || viewState.selectedDeckName || viewState.deck || viewState.currentDeckName || '').replace(/__$/, '');
         if(!targetId || !deck) return null;
-        const deckMode = viewState.deckMode || viewState.currentDeckMode || (Array.isArray(library[deck]) ? 'deck' : 'group');
+        const deckMode = viewState.selectedDeckType || viewState.deckMode || viewState.currentDeckMode || (Array.isArray(library[deck]) ? 'deck' : 'group');
         const cards = getCardsForDeckContext(deck, deckMode);
         const index = cards.findIndex(card => String(card && card.id) === targetId || (Array.isArray(card && card.idCandidates) && card.idCandidates.map(String).includes(targetId)));
         if(index < 0) return null;
         return { deck, deckMode, index, card: cards[index] };
+    }
+
+    function restoreSelectedDeckContext(deck, deckMode = 'deck', isRestore = true) {
+        const normalizedDeck = String(deck || '').replace(/__$/, '');
+        if(!normalizedDeck) return false;
+        if(deckMode === 'group') {
+            selectDeckGroup(normalizedDeck + '__', isRestore);
+            return true;
+        }
+        if(library[normalizedDeck]) {
+            selectDeck(normalizedDeck, isRestore);
+            return true;
+        }
+        const hasChildren = Object.keys(library || {}).some(key => key === normalizedDeck || key.startsWith(normalizedDeck + '__'));
+        if(hasChildren) {
+            selectDeckGroup(normalizedDeck + '__', isRestore);
+            return true;
+        }
+        return false;
     }
 
     function getFirstValidDeckName() {
@@ -2943,6 +2962,7 @@
             cardId: viewState.cardId,
             searchQuery: viewState.searchQuery
         };
+        states[viewState.selectedDeckPath || viewState.deck] = states[viewState.deck];
         setStorageItem(STORAGE_KEY_DECK_VIEW_STATES, JSON.stringify(states));
     }
     function restoreDeckViewState(deck) {
@@ -3375,7 +3395,7 @@
             const savedViewState = getStartupViewState();
             const targetCardId = savedViewState.cardId || savedCardId;
             if(targetCardId) {
-                const foundIndex = activeDeck.findIndex(c => String(c.id) === String(targetCardId));
+                const foundIndex = activeDeck.findIndex(c => String(c.id) === String(targetCardId) || (Array.isArray(c.idCandidates) && c.idCandidates.map(String).includes(String(targetCardId))));
                 if(foundIndex >= 0) return foundIndex;
             }
         }
