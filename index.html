@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.29-학습액션백업만)</title>
+<title>Yoki (v11.18.30-복구덱컨텍스트)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.29-학습액션백업만)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.30-복구덱컨텍스트)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.29-학습액션백업만';
+    const APP_VERSION = 'v11.18.30-복구덱컨텍스트';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -2294,11 +2294,12 @@
         updateFilterStatusUI(); highlightFilter();
 
         const targetCardId = getStartupTargetCardId(savedViewState);
-        const targetLocation = findCardLocationById(targetCardId);
+        const targetLocation = findCardLocationInViewContext(savedViewState, targetCardId) || findCardLocationById(targetCardId);
         if(targetLocation) {
             applyStartupViewState(savedViewState, targetLocation.deck);
-            selectDeck(targetLocation.deck, true);
-            console.log(`RESTORE_POSITION result=found deck=${targetLocation.deck} index=${currentIndex}`);
+            if(targetLocation.deckMode === 'group') selectDeckGroup(targetLocation.deck + '__', true);
+            else selectDeck(targetLocation.deck, true);
+            console.log(`RESTORE_POSITION result=found deck=${targetLocation.deck} mode=${targetLocation.deckMode || 'deck'} index=${currentIndex}`);
             ensureVisibleCard();
             if(isHistoryRestore) logFirebaseRestoreStatsMatch('manualRestoreReload');
             return;
@@ -2346,9 +2347,31 @@
         for(const [deckName, cards] of Object.entries(library || {})) {
             if(!Array.isArray(cards)) continue;
             const index = cards.findIndex(card => String(card && card.id) === targetId || (Array.isArray(card && card.idCandidates) && card.idCandidates.map(String).includes(targetId)));
-            if(index >= 0) return { deck: deckName, index, card: cards[index] };
+            if(index >= 0) return { deck: deckName, deckMode: 'deck', index, card: cards[index] };
         }
         return null;
+    }
+
+    function getCardsForDeckContext(deck, deckMode = 'deck') {
+        const normalizedDeck = String(deck || '').replace(/__$/, '');
+        if(!normalizedDeck) return [];
+        if(deckMode !== 'group' && Array.isArray(library[normalizedDeck])) return library[normalizedDeck];
+        let merged = [];
+        Object.keys(library || {}).forEach(key => {
+            if(key === normalizedDeck || key.startsWith(normalizedDeck + '__')) merged = merged.concat(library[key] || []);
+        });
+        return merged;
+    }
+
+    function findCardLocationInViewContext(viewState = {}, cardId) {
+        const targetId = String(cardId || '');
+        const deck = String(viewState.deck || viewState.currentDeckName || '').replace(/__$/, '');
+        if(!targetId || !deck) return null;
+        const deckMode = viewState.deckMode || viewState.currentDeckMode || (Array.isArray(library[deck]) ? 'deck' : 'group');
+        const cards = getCardsForDeckContext(deck, deckMode);
+        const index = cards.findIndex(card => String(card && card.id) === targetId || (Array.isArray(card && card.idCandidates) && card.idCandidates.map(String).includes(targetId)));
+        if(index < 0) return null;
+        return { deck, deckMode, index, card: cards[index] };
     }
 
     function getFirstValidDeckName() {
