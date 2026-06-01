@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.27-시작위치복원)</title>
+<title>Yoki (v11.18.28-백업위치우선복원)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.27-시작위치복원)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.28-백업위치우선복원)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.27-시작위치복원';
+    const APP_VERSION = 'v11.18.28-백업위치우선복원';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1423,6 +1423,7 @@
             const existingStatsBeforeRestore = getStatsStore();
             const restoredStatsOriginal = getBackupStatsCandidate(targetData);
             const backupStatsKeyCount = Object.keys(restoredStatsOriginal || {}).length;
+            const restoredPositionState = persistBackupPositionState(targetData, 'backup');
 
             const restoreField = (field, storageKey) => {
                 if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
@@ -1436,6 +1437,7 @@
             restoreField('localEdits', STORAGE_KEY_LOCAL_EDITS);
             restoreField('cardIdMap', STORAGE_KEY_CARD_ID_MAP);
             restoreField('searchQuery', STORAGE_KEY_SEARCH_QUERY);
+            persistBackupPositionState({ ...targetData, viewState: restoredPositionState }, 'backup');
             const restoredStatsForCheck = getStatsStore();
             const restoredStatsKeys = Object.keys(restoredStatsForCheck || {});
             console.log('[Yoki Restore Stats Merge]', {
@@ -2291,17 +2293,20 @@
         if(targetLocation) {
             applyStartupViewState(savedViewState, targetLocation.deck);
             selectDeck(targetLocation.deck, true);
+            console.log(`RESTORE_POSITION result=found deck=${targetLocation.deck} index=${currentIndex}`);
             ensureVisibleCard();
             if(isHistoryRestore) logFirebaseRestoreStatsMatch('manualRestoreReload');
             return;
         }
+        if(targetCardId) console.log(`RESTORE_POSITION result=uuid-not-found uuid=${targetCardId}`);
 
         if (last) {
             if (lastMode === 'group') selectDeckGroup(last + '__', true);
             else if (library[last]) selectDeck(last, true);
             else selectDeckGroup(last + '__', true); 
         } else if (Object.keys(library).length) { selectDeck(Object.keys(library)[0], false); }
-        ensureVisibleCard();
+        const ensured = ensureVisibleCard();
+        if(ensured) console.log(`RESTORE_POSITION result=fallback deck=${currentDeckName || ''} index=${currentIndex}`);
         if(isHistoryRestore) logFirebaseRestoreStatsMatch('manualRestoreReload');
     }
 
@@ -2988,6 +2993,40 @@
         };
     }
 
+    function persistBackupPositionState(data = {}, source = 'backup') {
+        const state = getBackupViewState(data);
+        const latestBackupAt = getBackupUpdatedAt(data, data && data.timestamp);
+        const cardId = getStartupTargetCardId(state);
+        console.log(`RESTORE_BACKUP latestBackupAt=${latestBackupAt}`);
+        console.log(`RESTORE_POSITION source=${source}`);
+        console.log(`RESTORE_POSITION deck=${state.deck || ''}`);
+        console.log(`RESTORE_POSITION uuid=${cardId}`);
+        console.log(`RESTORE_POSITION index=${Number(state.index) || 0}`);
+
+        pendingStartupViewState = state;
+        if(state.deck) setStorageItem(STORAGE_KEY_LAST_DECK, state.deck);
+        if(state.deckMode) setStorageItem(STORAGE_KEY_LAST_DECK_MODE, state.deckMode);
+        if(state.filter || state.sort || state.secondarySort) {
+            setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({
+                filter: state.filter || 'default',
+                sort: state.sort || 'original',
+                secondarySort: state.secondarySort || 'none'
+            }));
+        }
+        if(typeof state.searchQuery === 'string') setStorageItem(STORAGE_KEY_SEARCH_QUERY, state.searchQuery);
+        if(Array.isArray(state.activeIds) && state.activeIds.length) setStorageItem(STORAGE_KEY_ACTIVE_IDS, JSON.stringify(state.activeIds.map(String)));
+        if(cardId) setStorageItem(STORAGE_KEY_CURRENT_CARD_ID, cardId);
+        setStorageItem(STORAGE_KEY_VIEW_STATE, JSON.stringify({ ...state, cardId }));
+        if(state.deck) {
+            const progress = parseJSONSafe(getStorageItem(STORAGE_KEY_PROGRESS), {});
+            progress[`${state.deck}__${state.filter || 'default'}__${state.sort || 'original'}__${state.secondarySort || 'none'}`] = Number(state.index) || 0;
+            progress[`${state.deck}__${state.filter || 'default'}__${state.sort || 'original'}`] = Number(state.index) || 0;
+            setStorageItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
+        }
+        console.log(`RESTORE_POSITION result=stored`);
+        return state;
+    }
+
     function mergeStatsHistory(localStat = {}, cloudStat = {}) {
         const localHistory = Array.isArray(localStat.history) ? localStat.history : [];
         const cloudHistory = Array.isArray(cloudStat.history) ? cloudStat.history : [];
@@ -3059,7 +3098,7 @@
             if (setItemSafe(STORAGE_KEY_STATS, JSON.stringify(mergedStats))) {
                 setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(verifiedCloudUpdatedAt));
                 markLocalDataUpdated(Math.max(localUpdatedAt, verifiedCloudUpdatedAt));
-                pendingStartupViewState = getBackupViewState(data);
+                persistBackupPositionState(data, 'backup');
                 showToast('최신 클라우드 데이터 동기화 완료', 'success');
             }
         } catch(e) {
