@@ -2275,7 +2275,6 @@
         if(isHistoryRestore) setStorageItem(STORAGE_KEY_RESTORE_PENDING, '0');
         const savedViewState = getStartupViewState();
         if(!isHistoryRestore && savedViewState && savedViewState.deck) restoreViewStateToStorage(savedViewState);
-        if(!isHistoryRestore && savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
         renderDeckTree();
         const last = (savedViewState && savedViewState.deck) || getStorageItem(STORAGE_KEY_LAST_DECK);
         const lastMode = (savedViewState && savedViewState.deckMode) || getStorageItem(STORAGE_KEY_LAST_DECK_MODE);
@@ -2299,6 +2298,8 @@
             return;
         }
         if(targetCardId) console.log(`RESTORE_POSITION result=uuid-not-found uuid=${targetCardId}`);
+
+        if(!isHistoryRestore && savedViewState && savedViewState.deck && applySnapshotViewState(savedViewState)) return;
 
         if (last) {
             if (lastMode === 'group') selectDeckGroup(last + '__', true);
@@ -2981,13 +2982,13 @@
         const filterState = parseJSONSafe(data.filter, {});
         return {
             ...viewState,
-            deck: viewState.deck || data.lastDeck || '',
-            deckMode: viewState.deckMode || data.lastDeckMode || 'deck',
+            deck: data.currentDeckName || data.currentDeck || viewState.currentDeckName || viewState.deck || data.lastDeck || '',
+            deckMode: data.currentDeckMode || viewState.currentDeckMode || viewState.deckMode || data.lastDeckMode || 'deck',
             filter: viewState.filter || filterState.filter || 'default',
             sort: viewState.sort || filterState.sort || 'original',
             secondarySort: viewState.secondarySort || filterState.secondarySort || 'none',
-            index: Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0,
-            cardId: data.currentCardUuid || viewState.currentCardUuid || data.currentCardId || viewState.cardId || '',
+            index: Number.isFinite(Number(data.currentCardIndex)) ? Number(data.currentCardIndex) : (Number.isFinite(Number(viewState.currentCardIndex)) ? Number(viewState.currentCardIndex) : (Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0)),
+            cardId: data.currentCardUuid || data.currentCardId || viewState.currentCardUuid || viewState.currentCardId || viewState.cardId || '',
             activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : parseJSONSafe(data.activeIds, []),
             searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : (data.searchQuery || '')
         };
@@ -3110,7 +3111,7 @@
         const viewState = parseJSONSafe(data && data.viewState, {});
         const filterState = parseJSONSafe(data && data.filter, {});
         const activeIds = parseJSONSafe(data && data.activeIds, []);
-        const deck = viewState.deck || (data && data.lastDeck) || '';
+        const deck = (data && (data.currentDeckName || data.currentDeck)) || viewState.currentDeckName || viewState.deck || (data && data.lastDeck) || '';
         const filter = viewState.filter || filterState.filter || 'default';
         const sort = viewState.sort || filterState.sort || 'original';
         const secondarySort = viewState.secondarySort || filterState.secondarySort || 'none';
@@ -3124,12 +3125,12 @@
 
         return {
             deck,
-            deckMode: viewState.deckMode || (data && data.lastDeckMode) || 'deck',
+            deckMode: (data && data.currentDeckMode) || viewState.currentDeckMode || viewState.deckMode || (data && data.lastDeckMode) || 'deck',
             filter,
             sort,
             secondarySort,
-            index,
-            cardId: viewState.cardId || (data && data.currentCardId) || '',
+            index: Number.isFinite(Number(data && data.currentCardIndex)) ? Number(data.currentCardIndex) : (Number.isFinite(Number(viewState.currentCardIndex)) ? Number(viewState.currentCardIndex) : index),
+            cardId: (data && (data.currentCardUuid || data.currentCardId)) || viewState.currentCardUuid || viewState.currentCardId || viewState.cardId || '',
             activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : (Array.isArray(activeIds) ? activeIds : []),
             activeCards: Array.isArray(viewState.activeCards) ? viewState.activeCards : [],
             searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : ((data && data.searchQuery) || ''),
