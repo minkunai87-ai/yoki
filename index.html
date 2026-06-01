@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.31-selectedDeck복원)</title>
+<title>Yoki (v11.18.32-PWA복구진단)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.31-selectedDeck복원)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.32-PWA복구진단)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.31-selectedDeck복원';
+    const APP_VERSION = 'v11.18.32-PWA복구진단';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -405,6 +405,10 @@
     let lastLegacyImageStatsMapDiagnostics = {};
     let lastRecoveryPollutionDiagnostics = {};
     let pendingStartupViewState = null;
+    let inMemoryStatsStore = null;
+    const YOKI_IDB_NAME = 'yoki_pwa_restore_store_v1';
+    const YOKI_IDB_STORE = 'kv';
+    const YOKI_IDB_STATS_KEY = 'stats';
     
     // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'yoki_final_library';
@@ -973,6 +977,8 @@
             
             const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
             if (savedSearch) document.getElementById('search-input').value = savedSearch;
+            logYokiStorageEnvironment('boot');
+            await loadStatsFromIndexedDBFallback();
             
             try {
                 await autoScanGitHub();
@@ -1321,7 +1327,8 @@
 
     async function fetchBackupRecordsFromIndexFast() {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?orderBy=%22$key%22&limitToLast=100&_t=${Date.now()}`);
+            logYokiStorageEnvironment('fetchFirebaseList:index');
+            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?orderBy=%22$key%22&limitToLast=100&_t=${Date.now()}`, { cache: 'no-store' });
             if(!res.ok) return [];
             const data = await res.json();
             if(!data || typeof data !== 'object') return [];
@@ -1338,7 +1345,7 @@
 
     async function fetchBackupRecordsFromShallowPath(path, label) {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}${path}.json?shallow=true&_t=${Date.now()}`);
+            const res = await fetch(`${FIREBASE_DB_URL}${path}.json?shallow=true&_t=${Date.now()}`, { cache: 'no-store' });
             if(!res.ok) return [];
             const data = await res.json();
             if(!data || typeof data !== 'object') return [];
@@ -1412,7 +1419,8 @@
 
     async function restoreFromFirebase(ts, isAutoPull = false, backupPath = FIREBASE_BACKUP_PATH) {
         try {
-            const res = await fetch(`${FIREBASE_DB_URL}${backupPath}/${ts}.json`);
+            logYokiStorageEnvironment('restore:start');
+            const res = await fetch(`${FIREBASE_DB_URL}${backupPath}/${ts}.json`, { cache: 'no-store' });
             if(!res.ok) throw new Error(`Firebase restore fetch failed: ${res.status}`);
             const targetData = await res.json();
             if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
@@ -1435,8 +1443,10 @@
             logYokiStorageDiagnostics('before-firebase-restore', targetData);
             const existingStatsBeforeRestore = getStatsStore();
             const restoredStatsOriginal = getBackupStatsCandidate(targetData);
+            logRestoreStatsCounts('backup', restoredStatsOriginal);
             const backupStatsKeyCount = Object.keys(restoredStatsOriginal || {}).length;
             const restoredPositionState = persistBackupPositionState(targetData, 'backup');
+            console.log('RESTORE_POSITION', restoredPositionState);
 
             const restoreField = (field, storageKey) => {
                 if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
@@ -1444,6 +1454,7 @@
 
             const mergedInitialStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal };
             setItemSafe(STORAGE_KEY_STATS, JSON.stringify(mergedInitialStats));
+            logRestoreStatsCounts('afterInitialSet', getStatsStore());
             restoreField('progress', STORAGE_KEY_PROGRESS);
             restoreField('filter', STORAGE_KEY_FILTER_STATE);
             restoreField('targetRetention', STORAGE_KEY_TARGET_RETENTION);
@@ -1501,6 +1512,8 @@
             const statsAfterMigration = getStatsStore();
             const finalStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal, ...statsAfterMigration };
             setItemSafe(STORAGE_KEY_STATS, JSON.stringify(finalStats));
+            logRestoreStatsCounts('afterFinalSet', getStatsStore());
+            saveStatsToIndexedDBFallback(getStatsStore());
             cleanupUnsafeRecoveredStats(finalStats, lastFirebaseCardIdentityMap);
             const finalStatsKeyCount = Object.keys(finalStats || {}).length;
             lastCardIdentityMapDiagnostics = {
@@ -1530,8 +1543,14 @@
             }
             console.log('[Yoki Restore Match Disabled]', APP_VERSION);
             showCard();
+            logRestoreStatsCounts('afterRender', getStatsStore());
             const fbModal = document.getElementById('fb-modal');
             if(fbModal) fbModal.style.display = 'none';
+            console.log('RESTORE_COMPLETE', {
+                positionRestored: !!getCurrentCardId(),
+                stats: countRestoreStats(getStatsStore()),
+                currentCardId: getCurrentCardId()
+            });
             showToast("☁️ 복구 완료: 카드 로드 우선 모드", "success");
         } catch(e) { 
             console.error('[Firebase Restore Error]', e);
@@ -1553,7 +1572,7 @@
             if (!res.ok) throw new Error("API Limit");
             const files = (await res.json()).filter(f => f.name.endsWith('.txt'));
             
-            const savedStats = JSON.parse(getStorageItem(STORAGE_KEY_STATS) || '{}');
+            const savedStats = getStatsStore();
             const migrationReport = createYokiIdMigrationReport();
             let statsMigrated = false;
             let idMapChanged = false;
@@ -2988,14 +3007,118 @@
         return `RESTORED NOW: ${deck} / ${currentSortMode}+${currentSecondarySortMode} / ${currentFilterMode} / ${position} / card:${cardId}`;
     }
 
+    function getYokiStorageEnvironment() {
+        const standaloneMedia = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        return {
+            isStandalone: standaloneMedia || !!navigator.standalone,
+            navigatorStandalone: !!navigator.standalone,
+            displayModeStandalone: standaloneMedia,
+            userAgent: navigator.userAgent || '',
+            storageType: 'localStorage+IndexedDBFallback',
+            hasLocalStorage: (() => { try { return !!window.localStorage; } catch(e) { return false; } })(),
+            hasIndexedDB: typeof indexedDB !== 'undefined'
+        };
+    }
+
+    function logYokiStorageEnvironment(stage) {
+        console.log('[Yoki Storage Environment]', stage, getYokiStorageEnvironment());
+    }
+
+    function openYokiIndexedDB() {
+        return new Promise((resolve, reject) => {
+            if (typeof indexedDB === 'undefined') {
+                reject(new Error('IndexedDB unavailable'));
+                return;
+            }
+            const req = indexedDB.open(YOKI_IDB_NAME, 1);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(YOKI_IDB_STORE)) db.createObjectStore(YOKI_IDB_STORE);
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+        });
+    }
+
+    async function saveStatsToIndexedDBFallback(stats) {
+        try {
+            const db = await openYokiIndexedDB();
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(YOKI_IDB_STORE, 'readwrite');
+                tx.objectStore(YOKI_IDB_STORE).put(stats, YOKI_IDB_STATS_KEY);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error || new Error('IndexedDB stats save failed'));
+            });
+            db.close();
+            console.log('[Yoki IndexedDB Stats Save]', { count: Object.keys(stats || {}).length });
+            return true;
+        } catch(e) {
+            console.error('[Yoki IndexedDB Stats Save Error]', e);
+            return false;
+        }
+    }
+
+    async function loadStatsFromIndexedDBFallback() {
+        try {
+            const db = await openYokiIndexedDB();
+            const stats = await new Promise((resolve, reject) => {
+                const tx = db.transaction(YOKI_IDB_STORE, 'readonly');
+                const req = tx.objectStore(YOKI_IDB_STORE).get(YOKI_IDB_STATS_KEY);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => reject(req.error || new Error('IndexedDB stats load failed'));
+            });
+            db.close();
+            if (stats && typeof stats === 'object') {
+                const localStats = parseJSONSafe(getStorageItem(STORAGE_KEY_STATS), {});
+                if (Object.keys(stats).length > Object.keys(localStats || {}).length) {
+                    inMemoryStatsStore = stats;
+                    console.log('[Yoki IndexedDB Stats Loaded]', { count: Object.keys(stats).length });
+                }
+            }
+        } catch(e) {
+            console.error('[Yoki IndexedDB Stats Load Error]', e);
+        }
+    }
+
+    function countRestoreStats(stats = {}) {
+        const values = Object.values(stats || {});
+        return {
+            cardStatsCount: Object.keys(stats || {}).length,
+            historyCount: values.filter(s => s && Array.isArray(s.history) && s.history.length > 0).length,
+            fsrsCount: values.filter(s => s && s.fsrs).length,
+            dueDateCount: values.filter(s => s && s.dueDate).length
+        };
+    }
+
+    function logRestoreStatsCounts(stage, stats = getStatsStore()) {
+        const counts = countRestoreStats(stats);
+        console.log(`RESTORE_CARD_STATS_COUNT ${stage} ${counts.cardStatsCount}`);
+        console.log(`RESTORE_HISTORY_COUNT ${stage} ${counts.historyCount}`);
+        console.log(`RESTORE_FSRS_COUNT ${stage} ${counts.fsrsCount}`);
+        console.log('[Yoki Restore Stats Counts]', stage, counts);
+        return counts;
+    }
 
     function setItemSafe(key, value) {
         try {
             if(value === undefined || value === null) return true;
+            if(key === STORAGE_KEY_STATS) {
+                const parsedStats = parseJSONSafe(value, {});
+                if(parsedStats && typeof parsedStats === 'object') inMemoryStatsStore = parsedStats;
+            }
             setStorageItem(key, typeof value === 'string' ? value : JSON.stringify(value));
             return true;
         } catch(e) {
             console.error('[Firebase Restore Storage Error]', key, e);
+            if(key === STORAGE_KEY_STATS) {
+                const parsedStats = parseJSONSafe(value, {});
+                if(parsedStats && typeof parsedStats === 'object') {
+                    inMemoryStatsStore = parsedStats;
+                    saveStatsToIndexedDBFallback(parsedStats);
+                    console.warn('[Yoki Stats Restore Fallback Active]', { count: Object.keys(parsedStats).length });
+                    return true;
+                }
+            }
             return false;
         }
     }
@@ -3411,7 +3534,10 @@
         const progress = JSON.parse(getStorageItem(STORAGE_KEY_PROGRESS) || '{}');
         return progress[getProgressKey()] ?? progress[`${currentDeckName}__${currentFilterMode}__${currentSortMode}`] ?? 0;
     }
-    function getStatsStore() { return JSON.parse(getStorageItem(STORAGE_KEY_STATS) || '{}'); }
+    function getStatsStore() {
+        if(inMemoryStatsStore && typeof inMemoryStatsStore === 'object' && Object.keys(inMemoryStatsStore).length) return inMemoryStatsStore;
+        return JSON.parse(getStorageItem(STORAGE_KEY_STATS) || '{}');
+    }
     function findCardById(cardId) {
         const targetId = String(cardId || '');
         if(!targetId) return null;
