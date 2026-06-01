@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.30-복구덱컨텍스트)</title>
+<title>Yoki (v11.18.31-selectedDeck복원)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.30-복구덱컨텍스트)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.31-selectedDeck복원)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.30-복구덱컨텍스트';
+    const APP_VERSION = 'v11.18.31-selectedDeck복원';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1123,9 +1123,16 @@
                 legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics,
                 searchQuery: getStorageItem(STORAGE_KEY_SEARCH_QUERY) || '',
                 timestamp: metadata.backupAt,
+                selectedDeckName: currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '',
+                selectedDeckPath: currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '',
+                selectedDeckType: getStorageItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck',
+                viewMode: (getStorageItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck') === 'group' ? 'parentDeckView' : 'subDeckView',
                 currentDeckName: currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '',
                 currentCardUuid,
                 currentCardIndex: Number.isFinite(Number(currentIndex)) ? currentIndex : 0,
+                currentCardIndexInSelectedDeck: Number.isFinite(Number(currentIndex)) ? currentIndex : 0,
+                currentSortMode,
+                currentFilterMode,
                 lastViewedAt: Date.now(),
                 localUpdatedAt: getLocalDataUpdatedAt(),
                 metadata: { ...metadata, localUpdatedAt: getLocalDataUpdatedAt() }
@@ -2294,12 +2301,15 @@
         updateFilterStatusUI(); highlightFilter();
 
         const targetCardId = getStartupTargetCardId(savedViewState);
-        const targetLocation = findCardLocationInViewContext(savedViewState, targetCardId) || findCardLocationById(targetCardId);
+        const targetLocation = findCardLocationInViewContext(savedViewState, targetCardId);
         if(targetLocation) {
             applyStartupViewState(savedViewState, targetLocation.deck);
-            if(targetLocation.deckMode === 'group') selectDeckGroup(targetLocation.deck + '__', true);
-            else selectDeck(targetLocation.deck, true);
+            restoreSelectedDeckContext(targetLocation.deck, targetLocation.deckMode || savedViewState.selectedDeckType || savedViewState.deckMode || 'deck', true);
+            console.log(`RESTORE_POSITION_RESULT found-selected-deck`);
             console.log(`RESTORE_POSITION result=found deck=${targetLocation.deck} mode=${targetLocation.deckMode || 'deck'} index=${currentIndex}`);
+            console.log(`FINAL_SELECTED_DECK ${currentDeckName || ''}`);
+            console.log(`FINAL_CURRENT_CARD_UUID ${getCurrentCardId()}`);
+            console.log(`FINAL_CURRENT_INDEX ${currentIndex}`);
             ensureVisibleCard();
             if(isHistoryRestore) logFirebaseRestoreStatsMatch('manualRestoreReload');
             return;
@@ -2887,14 +2897,22 @@
     }
 
     function getCurrentViewState(includeCards = false) {
+        const selectedDeckName = currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '';
+        const selectedDeckType = getStorageItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck';
         const state = {
-            deck: currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '',
-            deckMode: getStorageItem(STORAGE_KEY_LAST_DECK_MODE) || 'deck',
+            deck: selectedDeckName,
+            deckMode: selectedDeckType,
+            selectedDeckName,
+            selectedDeckPath: selectedDeckName,
+            selectedDeckType,
+            viewMode: selectedDeckType === 'group' ? 'parentDeckView' : 'subDeckView',
             filter: currentFilterMode,
             sort: currentSortMode,
             secondarySort: currentSecondarySortMode,
             index: currentIndex,
             cardId: getCurrentCardId() || getStorageItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
+            currentCardUuid: getCurrentCardId() || getStorageItem(STORAGE_KEY_CURRENT_CARD_ID) || '',
+            currentCardIndexInSelectedDeck: currentIndex,
             activeIds: activeDeck.map(c => String(c.id)),
             searchQuery: document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : (getStorageItem(STORAGE_KEY_SEARCH_QUERY) || ''),
             snapshotVersion: APP_VERSION
@@ -3009,14 +3027,24 @@
     function getBackupViewState(data = {}) {
         const viewState = parseJSONSafe(data.viewState, {});
         const filterState = parseJSONSafe(data.filter, {});
+        const selectedDeck = data.selectedDeckPath || data.selectedDeckName || data.currentDeckName || data.currentDeck || viewState.selectedDeckPath || viewState.selectedDeckName || viewState.currentDeckName || viewState.deck || data.lastDeck || '';
+        const selectedType = data.selectedDeckType || viewState.selectedDeckType || data.currentDeckMode || viewState.currentDeckMode || viewState.deckMode || data.lastDeckMode || 'deck';
+        const selectedIndex = Number.isFinite(Number(data.currentCardIndexInSelectedDeck))
+            ? Number(data.currentCardIndexInSelectedDeck)
+            : (Number.isFinite(Number(data.currentCardIndex)) ? Number(data.currentCardIndex) : (Number.isFinite(Number(viewState.currentCardIndexInSelectedDeck)) ? Number(viewState.currentCardIndexInSelectedDeck) : (Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0)));
         return {
             ...viewState,
-            deck: data.currentDeckName || data.currentDeck || viewState.currentDeckName || viewState.deck || data.lastDeck || '',
-            deckMode: data.currentDeckMode || viewState.currentDeckMode || viewState.deckMode || data.lastDeckMode || 'deck',
-            filter: viewState.filter || filterState.filter || 'default',
-            sort: viewState.sort || filterState.sort || 'original',
+            deck: selectedDeck,
+            deckMode: selectedType,
+            selectedDeckName: data.selectedDeckName || viewState.selectedDeckName || selectedDeck,
+            selectedDeckPath: selectedDeck,
+            selectedDeckType: selectedType,
+            viewMode: data.viewMode || viewState.viewMode || (selectedType === 'group' ? 'parentDeckView' : 'subDeckView'),
+            filter: data.currentFilterMode || viewState.filter || filterState.filter || 'default',
+            sort: data.currentSortMode || viewState.sort || filterState.sort || 'original',
             secondarySort: viewState.secondarySort || filterState.secondarySort || 'none',
-            index: Number.isFinite(Number(data.currentCardIndex)) ? Number(data.currentCardIndex) : (Number.isFinite(Number(viewState.currentCardIndex)) ? Number(viewState.currentCardIndex) : (Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0)),
+            index: selectedIndex,
+            currentCardIndexInSelectedDeck: selectedIndex,
             cardId: data.currentCardUuid || data.currentCardId || viewState.currentCardUuid || viewState.currentCardId || viewState.cardId || '',
             activeIds: Array.isArray(viewState.activeIds) ? viewState.activeIds : parseJSONSafe(data.activeIds, []),
             searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : (data.searchQuery || '')
@@ -3032,6 +3060,9 @@
         console.log(`RESTORE_POSITION deck=${state.deck || ''}`);
         console.log(`RESTORE_POSITION uuid=${cardId}`);
         console.log(`RESTORE_POSITION index=${Number(state.index) || 0}`);
+        console.log(`RESTORE_SELECTED_DECK_FROM_BACKUP ${state.selectedDeckPath || state.deck || ''}`);
+        console.log(`RESTORE_VIEW_MODE_FROM_BACKUP ${state.viewMode || state.selectedDeckType || state.deckMode || ''}`);
+        console.log(`RESTORE_CARD_UUID_FROM_BACKUP ${cardId}`);
 
         pendingStartupViewState = state;
         if(state.deck) setStorageItem(STORAGE_KEY_LAST_DECK, state.deck);
