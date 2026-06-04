@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.32-상위덱개수슬라이더)</title>
+<title>Yoki (v11.18.33-Firebase백업경량화)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -230,7 +230,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.32-상위덱개수슬라이더)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.33-Firebase백업경량화)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -425,7 +425,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.32-상위덱개수슬라이더';
+    const APP_VERSION = 'v11.18.33-Firebase백업경량화';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -466,6 +466,7 @@
     const STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT = 'yoki_last_auto_cloud_sync_at';
     const FIREBASE_BACKUP_PATH = '/apps/yoki/backups';
     const FIREBASE_BACKUP_INDEX_PATH = '/apps/yoki/backupIndex';
+    const FIREBASE_CARD_IDENTITY_MAP_PATH = '/apps/yoki/cardIdentityMap';
     const FIREBASE_BACKUP_KEEP_COUNT = 20;
     const LEGACY_STORAGE_KEYS = {};
     LEGACY_STORAGE_KEYS[STORAGE_KEY_LIBRARY] = 'anki_final_library';
@@ -1156,10 +1157,6 @@
                 targetRetention: getStorageItem(STORAGE_KEY_TARGET_RETENTION) || '0.90', 
                 localEdits: getStorageItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
                 cardIdMap: getStorageItem(STORAGE_KEY_CARD_ID_MAP) || '{}',
-                cardIdentityMap,
-                cardIdentityMapDiagnostics: identityDiagnostics,
-                legacyImageStatsMap: legacyImageStatsEntries,
-                legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics,
                 searchQuery: getStorageItem(STORAGE_KEY_SEARCH_QUERY) || '',
                 timestamp: metadata.backupAt,
                 selectedDeckName: currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '',
@@ -1176,16 +1173,25 @@
                 localUpdatedAt: getLocalDataUpdatedAt(),
                 metadata: { ...metadata, localUpdatedAt: getLocalDataUpdatedAt() }
             };
+            const latestIdentityMapData = {
+                appId: 'yoki',
+                appVersion: APP_VERSION,
+                updatedAt: data.timestamp,
+                cardIdentityMap,
+                cardIdentityMapDiagnostics: identityDiagnostics,
+                legacyImageStatsMap: legacyImageStatsEntries,
+                legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics
+            };
             const payloadText = JSON.stringify(data);
             const payloadSizeKB = Math.round(payloadText.length / 1024);
             const payloadBreakdownKB = {
                 totalKB: payloadSizeKB,
                 statsKB: Math.round(JSON.stringify(data.stats || '').length / 1024),
-                cardIdentityMapKB: Math.round(JSON.stringify(data.cardIdentityMap || {}).length / 1024),
+                cardIdentityMapKB: Math.round(JSON.stringify(cardIdentityMap || {}).length / 1024),
                 libraryKB: Math.round(JSON.stringify(data.library || '').length / 1024),
                 diagnosticsKB: Math.round(JSON.stringify({
-                    cardIdentityMapDiagnostics: data.cardIdentityMapDiagnostics || {},
-                    legacyImageStatsMapDiagnostics: data.legacyImageStatsMapDiagnostics || {}
+                    cardIdentityMapDiagnostics: identityDiagnostics || {},
+                    legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics || {}
                 }).length / 1024)
             };
             const backupIndexData = {
@@ -1204,9 +1210,15 @@
                 statsKeyCount: Object.keys(backupStats || {}).length,
                 cardIdentityMapSize,
                 legacyImageStatsMapSize: legacyImageStatsEntries.length,
+                cardIdentityMapPath: FIREBASE_CARD_IDENTITY_MAP_PATH,
                 payloadSizeKB,
                 payloadBreakdownKB
             });
+            const mapRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_CARD_IDENTITY_MAP_PATH}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(latestIdentityMapData), keepalive: !!options.keepalive });
+            if(!mapRes.ok) {
+                const mapErrorText = await mapRes.text().catch(() => '');
+                throw new Error(`Firebase cardIdentityMap ${mapRes.status} ${mapErrorText || mapRes.statusText || 'map update failed'}`);
+            }
             const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payloadText, keepalive: !!options.keepalive });
             if(res.ok) { 
                 try {
@@ -1404,6 +1416,19 @@
         }
     }
 
+    async function fetchLatestCardIdentityMapData() {
+        try {
+            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_CARD_IDENTITY_MAP_PATH}.json?_t=${Date.now()}`, { cache: 'no-store' });
+            if(!res.ok) return null;
+            const data = await res.json();
+            if(!data || typeof data !== 'object' || data.appId !== 'yoki') return null;
+            return data;
+        } catch(e) {
+            console.error('[Yoki Firebase CardIdentityMap Fetch Error]', e);
+            return null;
+        }
+    }
+
     async function fetchFirebaseList() {
         document.getElementById('fb-auth-section').style.display = 'none';
         document.getElementById('fb-list-section').style.display = 'block';
@@ -1458,14 +1483,17 @@
             const targetData = await res.json();
             if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
             if(!isYokiBackupRecord(targetData, backupPath)) throw new Error(`Blocked non-Yoki backup restore: ${targetData.appId || 'unknown'}`);
-            const restoredCardIdentityMap = parseJSONSafe(targetData.cardIdentityMap, {});
+            const latestMapData = hasBackupField(targetData, 'cardIdentityMap') ? null : await fetchLatestCardIdentityMapData();
+            const identityMapSourceData = latestMapData || targetData;
+            const restoredCardIdentityMap = parseJSONSafe(identityMapSourceData.cardIdentityMap, {});
             lastFirebaseCardIdentityMap = restoredCardIdentityMap && typeof restoredCardIdentityMap === 'object' ? restoredCardIdentityMap : {};
-            lastFirebaseCardIdentityMapSource = `${backupPath}/${ts}`;
-            lastCardIdentityMapDiagnostics = parseJSONSafe(targetData.cardIdentityMapDiagnostics, {});
-            lastLegacyImageStatsMap = normalizeLegacyImageStatsMap(parseJSONSafe(targetData.legacyImageStatsMap, targetData.legacyImageStatsMap || {}));
-            lastLegacyImageStatsMapDiagnostics = parseJSONSafe(targetData.legacyImageStatsMapDiagnostics, {});
+            lastFirebaseCardIdentityMapSource = latestMapData ? FIREBASE_CARD_IDENTITY_MAP_PATH : `${backupPath}/${ts}`;
+            lastCardIdentityMapDiagnostics = parseJSONSafe(identityMapSourceData.cardIdentityMapDiagnostics, {});
+            lastLegacyImageStatsMap = normalizeLegacyImageStatsMap(parseJSONSafe(identityMapSourceData.legacyImageStatsMap, identityMapSourceData.legacyImageStatsMap || {}));
+            lastLegacyImageStatsMapDiagnostics = parseJSONSafe(identityMapSourceData.legacyImageStatsMapDiagnostics, {});
             console.log('[Yoki Firebase Restore CardIdentityMap]', {
-                exists: !!targetData.cardIdentityMap,
+                exists: !!identityMapSourceData.cardIdentityMap,
+                latestPathUsed: !!latestMapData,
                 size: Object.keys(lastFirebaseCardIdentityMap || {}).length,
                 diagnostics: lastCardIdentityMapDiagnostics,
                 legacyImageStatsMapSize: Object.keys(lastLegacyImageStatsMap || {}).length,
