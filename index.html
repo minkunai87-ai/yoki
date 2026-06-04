@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.32-PWA복구진단)</title>
+<title>Yoki (v11.18.31-Firebase분리점검)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -204,7 +204,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.32-PWA복구진단)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.30-Firebase분리점검)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -393,7 +393,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.32-PWA복구진단';
+    const APP_VERSION = 'v11.18.30-Firebase분리점검';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -433,7 +433,7 @@
     const STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT = 'yoki_last_auto_cloud_sync_at';
     const FIREBASE_BACKUP_PATH = '/apps/yoki/backups';
     const FIREBASE_BACKUP_INDEX_PATH = '/apps/yoki/backupIndex';
-    const FIREBASE_LEGACY_BACKUP_PATH = '/backups';
+    const FIREBASE_BACKUP_KEEP_COUNT = 20;
     const LEGACY_STORAGE_KEYS = {};
     LEGACY_STORAGE_KEYS[STORAGE_KEY_LIBRARY] = 'anki_final_library';
     LEGACY_STORAGE_KEYS[STORAGE_KEY_STATS] = 'anki_final_stats';
@@ -515,7 +515,7 @@
     const gradeHistoryLabels = { 0: '모름', 1: '애매', 2: '맞음', 3: '확인' };
     const gradeHistoryPoints = { 0: 0, 1: 0.5, 2: 1, 3: null };
 
-    const FIREBASE_DB_URL = "https://yoki-33b0d-default-rtdb.firebaseio.com";
+    const FIREBASE_DB_URL = "https://yokiapp-afcca-default-rtdb.firebaseio.com";
     let ghRepoToken = '';
     let backupTimer = null;
     let isBackupInFlight = false;
@@ -1145,6 +1145,16 @@
             };
             const payloadText = JSON.stringify(data);
             const payloadSizeKB = Math.round(payloadText.length / 1024);
+            const payloadBreakdownKB = {
+                totalKB: payloadSizeKB,
+                statsKB: Math.round(JSON.stringify(data.stats || '').length / 1024),
+                cardIdentityMapKB: Math.round(JSON.stringify(data.cardIdentityMap || {}).length / 1024),
+                libraryKB: Math.round(JSON.stringify(data.library || '').length / 1024),
+                diagnosticsKB: Math.round(JSON.stringify({
+                    cardIdentityMapDiagnostics: data.cardIdentityMapDiagnostics || {},
+                    legacyImageStatsMapDiagnostics: data.legacyImageStatsMapDiagnostics || {}
+                }).length / 1024)
+            };
             const backupIndexData = {
                 timestamp: data.timestamp,
                 appId: 'yoki',
@@ -1156,11 +1166,13 @@
                 createdAt: Date.now()
             };
             console.log('[Yoki Backup Payload Size KB]', payloadSizeKB);
+            console.log('[Yoki Backup Payload Breakdown KB]', payloadBreakdownKB);
             console.log('[Yoki Backup Diagnostic]', {
                 statsKeyCount: Object.keys(backupStats || {}).length,
                 cardIdentityMapSize,
                 legacyImageStatsMapSize: legacyImageStatsEntries.length,
-                payloadSizeKB
+                payloadSizeKB,
+                payloadBreakdownKB
             });
             const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payloadText, keepalive: !!options.keepalive });
             if(res.ok) { 
@@ -1228,11 +1240,6 @@
         if(data.appId === 'yoki') return true;
         if(/Yoki|v11\./i.test(identity)) return true;
         if(hasBackupField(data, 'cardIdMap')) return true;
-        if(sourcePath === FIREBASE_LEGACY_BACKUP_PATH) {
-            const hasLearningData = hasBackupField(data, 'stats') || hasBackupField(data, 'progress') || hasBackupField(data, 'targetRetention');
-            const hasYokiSignals = hasBackupField(data, 'localEdits') || hasBackupField(data, 'searchQuery') || hasBackupField(data, 'filter');
-            return hasLearningData && hasYokiSignals;
-        }
         return false;
     }
 
@@ -1245,7 +1252,7 @@
             const keys = Object.keys(data)
                 .filter(ts => /^\d+$/.test(String(ts)))
                 .sort((a, b) => Number(b) - Number(a))
-                .slice(0, 100);
+                .slice(0, FIREBASE_BACKUP_KEEP_COUNT);
             const summaries = await Promise.all(keys.map(ts => fetchBackupSummaryFromPath(path, label, ts)));
             return summaries.filter(record => record && isYokiBackupRecord(record.data, path));
         } catch(e) {
@@ -1282,10 +1289,8 @@
         document.getElementById('fb-auth-section').style.display = 'none'; document.getElementById('fb-list-section').style.display = 'block';
         const listUI = document.getElementById('fb-list-ui'); listUI.innerHTML = '<div style="padding:20px; text-align:center;">구글 서버에서 가져오는 중...</div>';
         try {
-            const [currentRecords, legacyRecords] = await Promise.all([
-                fetchBackupRecordsFromPath(FIREBASE_BACKUP_PATH, 'Yoki'),
-                fetchBackupRecordsFromPath(FIREBASE_LEGACY_BACKUP_PATH, 'legacy')
-            ]);
+            const currentRecords = await fetchBackupRecordsFromPath(FIREBASE_BACKUP_PATH, 'Yoki');
+            const legacyRecords = [];
             const recordMap = new Map();
             [...currentRecords, ...legacyRecords].forEach(record => {
                 const key = `${record.path}:${record.ts}`;
@@ -1294,7 +1299,7 @@
             const records = Array.from(recordMap.values()).sort((a, b) => Number(b.ts) - Number(a.ts));
             listUI.innerHTML = '';
             if(!records.length) { listUI.innerHTML = '<div style="padding:20px; text-align:center;">Yoki 백업이 없습니다.</div>'; return; }
-            const visibleRecords = records.slice(0, 100);
+            const visibleRecords = records.slice(0, FIREBASE_BACKUP_KEEP_COUNT);
             visibleRecords.forEach(record => {
                 const ts = record.ts;
                 const item = document.createElement('div'); item.className = 'backup-item'; const d = new Date(parseInt(ts));
@@ -1328,7 +1333,7 @@
     async function fetchBackupRecordsFromIndexFast() {
         try {
             logYokiStorageEnvironment('fetchFirebaseList:index');
-            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?orderBy=%22$key%22&limitToLast=100&_t=${Date.now()}`, { cache: 'no-store' });
+            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?orderBy=%22$key%22&limitToLast=${FIREBASE_BACKUP_KEEP_COUNT}&_t=${Date.now()}`, { cache: 'no-store' });
             if(!res.ok) return [];
             const data = await res.json();
             if(!data || typeof data !== 'object') return [];
@@ -1336,7 +1341,7 @@
                 .filter(([ts, indexData]) => /^\d+$/.test(String(ts)) && isYokiBackupRecord(indexData || {}, FIREBASE_BACKUP_PATH))
                 .map(([ts, indexData]) => ({ ts, data: indexData || {}, path: FIREBASE_BACKUP_PATH, label: 'Yoki', source: 'index' }))
                 .sort((a, b) => Number(b.ts) - Number(a.ts))
-                .slice(0, 100);
+                .slice(0, FIREBASE_BACKUP_KEEP_COUNT);
         } catch(e) {
             console.error('[Firebase Backup Index List Error]', e);
             return [];
@@ -1352,7 +1357,7 @@
             return Object.keys(data)
                 .filter(ts => /^\d+$/.test(String(ts)))
                 .sort((a, b) => Number(b) - Number(a))
-                .slice(0, 100)
+                .slice(0, FIREBASE_BACKUP_KEEP_COUNT)
                 .map(ts => ({
                     ts,
                     data: { appId: path === FIREBASE_BACKUP_PATH ? 'yoki' : '', appVersion: '정보 없음', metadata: null, timestamp: Number(ts), shallowOnly: true },
@@ -1375,19 +1380,14 @@
             let currentRecords = await fetchBackupRecordsFromIndexFast();
             let legacyRecords = [];
             if(!currentRecords.length) {
-                const shallowRecords = await Promise.all([
-                    fetchBackupRecordsFromShallowPath(FIREBASE_BACKUP_PATH, 'Yoki'),
-                    fetchBackupRecordsFromShallowPath(FIREBASE_LEGACY_BACKUP_PATH, 'legacy')
-                ]);
-                currentRecords = shallowRecords[0] || [];
-                legacyRecords = shallowRecords[1] || [];
+                currentRecords = await fetchBackupRecordsFromShallowPath(FIREBASE_BACKUP_PATH, 'Yoki');
             }
             const recordMap = new Map();
             [...currentRecords, ...legacyRecords].forEach(record => {
                 const key = `${record.path}:${record.ts}`;
                 if(!recordMap.has(key)) recordMap.set(key, record);
             });
-            const records = Array.from(recordMap.values()).sort((a, b) => Number(b.ts) - Number(a.ts)).slice(0, 100);
+            const records = Array.from(recordMap.values()).sort((a, b) => Number(b.ts) - Number(a.ts)).slice(0, FIREBASE_BACKUP_KEEP_COUNT);
             listUI.innerHTML = '';
             if(!records.length) {
                 listUI.innerHTML = '<div style="padding:20px; text-align:center;">Yoki 백업이 없습니다.</div>';
@@ -1559,7 +1559,21 @@
     }
     // 🔥 [수정됨] 서버 백업 보관 한도를 100개로 대폭 증가
     async function cleanupOldBackups() {
-        console.log('[Firebase Cleanup Disabled]', 'v11.11 legacy backup recovery');
+        try {
+            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?shallow=true&_t=${Date.now()}`, { cache: 'no-store' });
+            if(!res.ok) return;
+            const data = await res.json();
+            if(!data || typeof data !== 'object') return;
+            const timestamps = Object.keys(data).filter(ts => /^\d+$/.test(String(ts))).sort((a, b) => Number(a) - Number(b));
+            const toDelete = timestamps.slice(0, Math.max(0, timestamps.length - FIREBASE_BACKUP_KEEP_COUNT));
+            await Promise.all(toDelete.map(ts => Promise.all([
+                fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}/${ts}.json`, { method: 'DELETE' }),
+                fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}/${ts}.json`, { method: 'DELETE' })
+            ])));
+            if(toDelete.length) console.log('[Yoki Firebase Cleanup]', { keep: FIREBASE_BACKUP_KEEP_COUNT, deleted: toDelete.length });
+        } catch(e) {
+            console.error('[Yoki Firebase Cleanup Error]', e);
+        }
     }
 
     async function autoScanGitHub() {
