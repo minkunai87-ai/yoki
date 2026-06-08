@@ -4748,7 +4748,7 @@ _ 행정청의응답을신속하게하여부작위내지무웅답이라고하는
 행정법::83 (행정소송의 종류,내용,구도)::테마83 (기소인)	"<img src=""paste-d5affc368ebfc2cd3224e07341758f131e015241.jpg"" title=""소 28 ( 기관소송은 ) 개별법률에특별한규정이있는경우에인정
 ^ 되고그법률에정한자만이제기할수있다 . 092""/>"	"<img src=""paste-5b74b41afa79290c6e7bf5064a3f5290636ec395.jpg"" title=""""><img src=""83.png"" title="""">28"
 행정법::01 (행정과 행정법)::테마01 (무지)	"<img src=""paste-f33eb5d4c17d170b717d0087b2aae055647be65b.jpg"" title=""08 행정법의대상이되는행정은실질적행정에한한다 .
-18489""/>"	"<img src=""paste-0cd8b28dc606b52df8d7263019b04da581300cfc.jpg"" title=""""><img src=""01.png"" title="""">08"
+18489"">"	"<img src=""paste-0cd8b28dc606b52df8d7263019b04da581300cfc.jpg"" title=""""><img src=""01.png"" title="""">08"
 행정법::01 (행정과 행정법)::테마01 (무지)	"<img src=""paste-a4872e4ddf11f6a8c4342ed5853cb1728dbe6bb7.jpg"" title=""Z 09 국가행정과지치행정은행정주체를기준으로행정율구분한
 - 것이다 18 서 09""/>"	"<img src=""paste-c986138201273c022e99395003e37440b035fe95.jpg"" title=""""><img src=""01.png"" title="""">09"
 행정법::01 (행정과 행정법)::테마01 (무지)	"<img src=""paste-3309a873bff7b70958fa8b1bdf5399e58fc6dae8.jpg"" title=""11 (' 행정기본법 .에따르면 ) 행정은공공의이익을위하여적극적으로추진되어야한다 . 22989""/>"	"<img src=""paste-86446ec1eb6dac25b022343d4187fc78308a21e7.jpg"" title=""""><img src=""01.png"" title="""">11"
@@ -6708,19 +6708,19 @@ S8 위한신청을하였는데 , 국토교통부장관은심사를거쳐 ^^ 항�
 행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-5dddc9de9fb6772493040e3f7af5726de12fdf58.jpg"" title="". 폐기몰처리업의허가를받은 P ^ 시시장 .과 ' 지방자치단체를당시자로하는계약에관한법률 , 에따라재향용품의수집 ㆍ 운반업무를대행하는계익을체결하였다 ) 이 .과체결한계약의효력에대해무효확인을구하는소송을제기하는경우에는즉시화정의이익내지확인의이익이요구되지않는다 . 2o""/>"	"<img src=""paste-573be73a665212579ca4e37122e277b3d586c918.jpg"" title=""""><img src=""58.png"" title="""">59"
 행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-f98e1d64b2cef31a79b28fff6f1d4c56319b6a98.jpg"" title=""62 (P2 중대 ㆍ 명백한하자가있어무효인 ^ 처분에대해소
 、 &amp;8 제기하려고한다이 ^ 처분에대해무효확인소송을제기하려면확인소송의일반적요건인즉시확정의이익이있어야한다 . AL""/>"	"<img src=""paste-8a558d6756187c0f5cdf184ccc2e35738d08f256.jpg"" title=""""><img src=""58.png"" title="""">62"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-2736d8c7bf9f4d5073fffb74ae0d7eb838e6b383.jpg"" title=""03 세무서는행정조직내에서사무분담기구일뿐이고대외적
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-2736d8c7bf9f4d5073fffb74ae0d7eb838e6b383.jpg"" title=""03 세무서는행정조직내에서사무분담기구일뿐이고대외적
 、 으로의사를결정료시할권한을가진행정청이아니므로피고는행정청인세무서장이된다 . ㅋ""/>"	"<img src=""paste-a1ffc9a4ba57c53df089147b6cfa36c8f4a8c3c1.jpg"" title=""""><img src=""59.png"" title="""">03"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-e1e52ffb07479a1ab99bf0ba1960959d72c0b05a.jpg"" title=""05 원고가사망하거나소송물인권리관계의성질상이름승계
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-e1e52ffb07479a1ab99bf0ba1960959d72c0b05a.jpg"" title=""05 원고가사망하거나소송물인권리관계의성질상이름승계
 'mmamnm?.'uwvswa
 은종료된다 .""/>"	"<img src=""paste-38666a4b07a7a23b486deb2acd3c57f94f15cd4d.jpg"" title=""""><img src=""59.png"" title="""">05"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-9f6701b12f231567f6c58e06c7fb82c8d00030a4.jpg"" title=""08 독립유공자 P2 서훈이취소되고이름국가보훈처장이뿌
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-9f6701b12f231567f6c58e06c7fb82c8d00030a4.jpg"" title=""08 독립유공자 P2 서훈이취소되고이름국가보훈처장이뿌
 、 의유족에게서훈취소결정통지를한것은통지의주체나형식에하자가있다고보기는어렵다 . 이군무원 .""/>"	"<img src=""paste-e3772ebb2b0f4d754ce17a01c3b068f689d978a9.jpg"" title=""""><img src=""59.png"" title="""">08"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-9d098d1658267e7565824af93d51c5888c627a63.jpg"" title=""13 에스에이차공사가택지개발사업시행자인서울특별시장으로부터이주대책수립권한을포함한택지개발사업에따른 ¥
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-9d098d1658267e7565824af93d51c5888c627a63.jpg"" title=""13 에스에이차공사가택지개발사업시행자인서울특별시장으로부터이주대책수립권한을포함한택지개발사업에따른 ¥
 한율위임또는위틱받은경우 , 이주대책대싱자들이에스에이차공사명의로이루어진이주대책에관한처분에대한취소소송을제기함에있어정당한피고는에스에이치공사가되 aswan""/>"	"<img src=""paste-9ccbf0c9a3580eab74d7b7f6ca731ae3c88da4bc.jpg"" title=""""><img src=""59.png"" title="""">13"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-c810f9783aba9e55fd43074d5c4ac55d50960775.jpg"" title=""20 관할청인농림축신식품부장관으로부터농지보전부담금수남업무의대행을위탁받은한국농어촌공사가농지보전부담금님부통지서에관할청의대행자임을기재하고님부통지서를보낸경우농지보전부담금부과처분에대한취소소송의피고는관할청이된다 . 23""/>"	"<img src=""paste-1257a9317418afe08e5ff03f54dd8a4d9dce3279.jpg"" title=""""><img src=""59.png"" title="""">20"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-fa37a53aae0f6d97ce5124c8913dac2c746703d8.jpg"" title=""30 지방의회의장선게는항고소송의대상이된다 ) ㅋ""/>"	"<img src=""paste-80d3ff3c99f56b091ec31587c2d7dc26a9679542.jpg"" title=""""><img src=""59.png"" title="""">30"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-3488980657f7fc132eac32b5a811dce223eba3f5.jpg"" title=""36 무효등확인소송에있어서의피고는효력유무나존재여부의확인대상이되는처분등을한행정청이다 。 ※ ㅋ 배""/>"	"<img src=""paste-424db8db72a27f329fd2bc762835d4d1f5ad4783.jpg"" title=""""><img src=""59.png"" title="""">36"
-행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-fb2869fd7ba1c8b3eeec5e30b1053e8f0b519c03.jpg"" title=""11 국가를당시자또는참가인으로하는소송에서는법무부장관이국가를대표하고 , 지방자치단체를당시자로하는소송에서는지방자치단체의장이해당지방자치단체를대표한다 1987""/>"	"<img src=""paste-6ad9d41f934680d17b5d413dea6556cde773aa26.jpg"" title=""""><img src=""59.png"" title="""">41"
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-c810f9783aba9e55fd43074d5c4ac55d50960775.jpg"" title=""20 관할청인농림축신식품부장관으로부터농지보전부담금수남업무의대행을위탁받은한국농어촌공사가농지보전부담금님부통지서에관할청의대행자임을기재하고님부통지서를보낸경우농지보전부담금부과처분에대한취소소송의피고는관할청이된다 . 23""/>"	"<img src=""paste-1257a9317418afe08e5ff03f54dd8a4d9dce3279.jpg"" title=""""><img src=""59.png"" title="""">20"
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-fa37a53aae0f6d97ce5124c8913dac2c746703d8.jpg"" title=""30 지방의회의장선게는항고소송의대상이된다 ) ㅋ""/>"	"<img src=""paste-80d3ff3c99f56b091ec31587c2d7dc26a9679542.jpg"" title=""""><img src=""59.png"" title="""">30"
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-3488980657f7fc132eac32b5a811dce223eba3f5.jpg"" title=""36 무효등확인소송에있어서의피고는효력유무나존재여부의확인대상이되는처분등을한행정청이다 。 ※ ㅋ 배""/>"	"<img src=""paste-424db8db72a27f329fd2bc762835d4d1f5ad4783.jpg"" title=""""><img src=""59.png"" title="""">36"
+행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-fb2869fd7ba1c8b3eeec5e30b1053e8f0b519c03.jpg"" title=""11 국가를당시자또는참가인으로하는소송에서는법무부장관이국가를대표하고 , 지방자치단체를당시자로하는소송에서는지방자치단체의장이해당지방자치단체를대표한다 1987"">"	"<img src=""paste-6ad9d41f934680d17b5d413dea6556cde773aa26.jpg"" title=""""><img src=""59.png"" title="""">41"
 행정법::58 (피고적격)::테마58 (무지)	"<img src=""paste-450093bc7d024d3fb73b4b9d8954f03b2e6e07d2.jpg"" title=""기 023
 1 다음중항고소송이제기될경우에적절한피고를명시한것은 ? 8
 O 행정안전부장관의위임을받아전자정부국장이행한행위에대한소송에서행정안전부장관
@@ -7772,3 +7772,7 @@ Q@ ' 주민투요법 .에따른주민투표의효력에관한소송
 @ 공법상당사자소송
 @ 항고소송
 @ 민중소송으로서의주민소송""/>"	"<img src=""paste-455f2c237427c9d9300a1cb12b6eebee99661b47.jpg"" title=""""><img src=""83.png"" title="""">n4"
+행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-0f5f0547450d11a3b71fd8c670f7f84e12ddb5e9.jpg"">"	"<img src=""paste-b21b9b3c3620e9472166366ac540e0e93e110eb4.jpg""><img src=""59.png"" title="""">07"
+행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-64b4754e8891a60166c556b2ade1eabb4e7d635d.jpg"">"	"<img src=""paste-0bbfbe02c0e1e9ce48ca0a0b39788674f62c594b.jpg""><img src=""59.png"" title="""">08"
+행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-680e31398f082e7ec5816485db20e07d9441be29.jpg"">"	"<img src=""paste-030bd4215a1f08ec05796a3e6e61629b433c0eaf.jpg""><img src=""59.png"" title="""">18"
+행정법::59 (관할법원)::테마59 (무지)	"<img src=""paste-b5cd86984a511a4637537eca312e591b152d8249.jpg"">"	"<img src=""paste-612e0e2e26880339daac10eaf40d0ce1ff6c341d.jpg""><img src=""59.png"" title="""">19"
