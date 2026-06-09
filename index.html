@@ -3685,17 +3685,26 @@
     }
 
     async function getLatestYokiBackupIndexRecord() {
+        try {
+            const shallowRecords = await fetchBackupRecordsFromShallowPath(FIREBASE_BACKUP_PATH, 'Yoki');
+            if(Array.isArray(shallowRecords) && shallowRecords.length) {
+                const latest = shallowRecords.sort((a, b) => Number(b.ts) - Number(a.ts))[0];
+                return { ts: String(latest.ts), path: latest.path || FIREBASE_BACKUP_PATH, index: latest.data || {}, source: 'shallow-path' };
+            }
+        } catch(e) {
+            console.warn('[Yoki Latest Backup Shallow Lookup Failed]', e);
+        }
         const indexRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?orderBy=%22$key%22&limitToLast=1&_t=${Date.now()}`);
         if (indexRes.ok) {
             const indexData = await indexRes.json();
             const entries = Object.entries(indexData || {}).sort(([a], [b]) => Number(b) - Number(a));
-            if (entries.length) return { ts: entries[0][0], path: FIREBASE_BACKUP_PATH, index: entries[0][1] || {} };
+            if (entries.length) return { ts: entries[0][0], path: FIREBASE_BACKUP_PATH, index: entries[0][1] || {}, source: 'index' };
         }
         const shallowRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}.json?shallow=true&_t=${Date.now()}`);
         if (!shallowRes.ok) return null;
         const shallowData = await shallowRes.json();
         const timestamps = Object.keys(shallowData || {}).map(Number).filter(Boolean).sort((a, b) => b - a);
-        return timestamps.length ? { ts: String(timestamps[0]), path: FIREBASE_BACKUP_PATH, index: {} } : null;
+        return timestamps.length ? { ts: String(timestamps[0]), path: FIREBASE_BACKUP_PATH, index: {}, source: 'shallow-fallback' } : null;
     }
 
     async function syncLatestFirebaseBackupOnStartup() {
@@ -3707,7 +3716,7 @@
             const cloudUpdatedAt = Number(cloudState && cloudState.updatedAt) || 0;
             console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
             console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
-            if (!cloudState || cloudUpdatedAt <= localUpdatedAt) {
+            if (!cloudState) {
                 console.log('AUTO_SYNC_SOURCE local');
                 console.log('AUTO_SYNC_APPLIED', false);
                 restorePosition(localState.viewState || {}, 'local');
@@ -3715,9 +3724,9 @@
                 console.log('AUTO_SYNC_COMPLETE');
                 return;
             }
+            console.log('AUTO_SYNC_SOURCE cloud');
             applyRestoredState(cloudState, 'cloud');
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(cloudUpdatedAt));
-            console.log('AUTO_SYNC_SOURCE cloud');
             console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
             showToast('최신 클라우드 데이터 동기화 완료', 'success');
