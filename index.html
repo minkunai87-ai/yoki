@@ -513,7 +513,36 @@
     }
 
     function setStorageItem(key, value) {
-        localStorage.setItem(getStorageKeyForWrite(key), value);
+        try {
+            if(key === STORAGE_KEY_STATS) {
+                const parsedStats = parseJSONSafe(value, {});
+                if(parsedStats && typeof parsedStats === 'object') {
+                    inMemoryStatsStore = parsedStats;
+                    saveStatsToIndexedDBFallback(parsedStats);
+                }
+                removeStorageItem(STORAGE_KEY_STATS);
+                console.warn('LOCAL_STATS_STORAGE_SKIPPED', { key, count: Object.keys(parsedStats || {}).length });
+                return false;
+            }
+            localStorage.setItem(getStorageKeyForWrite(key), value);
+            return true;
+        } catch(e) {
+            if(e && (e.name === 'QuotaExceededError' || e.code === 22 || String(e).includes('quota'))) {
+                console.warn('QUOTA_EXCEEDED', { key, message: e.message || String(e) });
+                cleanupOversizedViewState();
+                if(key === STORAGE_KEY_STATS) {
+                    const parsedStats = parseJSONSafe(value, {});
+                    if(parsedStats && typeof parsedStats === 'object') {
+                        inMemoryStatsStore = parsedStats;
+                        saveStatsToIndexedDBFallback(parsedStats);
+                    }
+                    removeStorageItem(STORAGE_KEY_STATS);
+                    return false;
+                }
+            }
+            console.error('[Yoki Storage Set Error]', { key, error: e && e.message ? e.message : String(e) });
+            return false;
+        }
     }
 
     function removeStorageItem(key) {
@@ -1018,6 +1047,7 @@
             const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
             if (savedSearch) document.getElementById('search-input').value = savedSearch;
             logYokiStorageEnvironment('boot');
+            await cleanupOversizedStatsStorage();
             await loadStatsFromIndexedDBFallback();
             
             try {
@@ -1157,7 +1187,7 @@
             const data = { 
                 appId: 'yoki',
                 appVersion: APP_VERSION,
-                stats: getStorageItem(STORAGE_KEY_STATS) || '{}', 
+                stats: JSON.stringify(backupStats || {}),
                 progress: getStorageItem(STORAGE_KEY_PROGRESS) || '{}', 
                 filter: getStorageItem(STORAGE_KEY_FILTER_STATE) || '{}',
                 targetRetention: getStorageItem(STORAGE_KEY_TARGET_RETENTION) || '0.90', 
@@ -2966,7 +2996,8 @@
         }
         data[id].lastDate = Date.now(); 
         data[id].updatedAt = data[id].lastDate;
-        setStorageItem(STORAGE_KEY_STATS, JSON.stringify(data));
+        setItemSafe(STORAGE_KEY_STATS, JSON.stringify(data));
+        saveStatsToIndexedDBFallback(data);
         markLocalDataUpdated(data[id].updatedAt);
         saveStudyState('review', { backup: true });
         updateStatsUI(data[id]);
@@ -3231,6 +3262,18 @@
         } catch(e) {
             console.error('[Yoki IndexedDB Stats Load Error]', e);
         }
+    }
+
+    async function cleanupOversizedStatsStorage() {
+        const raw = getStorageItem(STORAGE_KEY_STATS);
+        if(!raw) return;
+        const stats = parseJSONSafe(raw, {});
+        if(stats && typeof stats === 'object' && Object.keys(stats).length) {
+            inMemoryStatsStore = stats;
+            await saveStatsToIndexedDBFallback(stats);
+        }
+        removeStorageItem(STORAGE_KEY_STATS);
+        console.warn('LOCAL_STATS_STORAGE_CLEARED', { count: Object.keys(stats || {}).length, kb: Math.round(String(raw).length / 1024) });
     }
 
     function countRestoreStats(stats = {}) {
