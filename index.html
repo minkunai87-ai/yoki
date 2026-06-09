@@ -1106,6 +1106,15 @@
         }, BACKUP_DEBOUNCE_MS);
     }
 
+    function backupReviewNow() {
+        isDataChanged = true;
+        if (backupTimer) {
+            clearTimeout(backupTimer);
+            backupTimer = null;
+        }
+        flushBackupToFirebase(true).catch(e => console.error('[Yoki Review Auto Backup Error]', e));
+    }
+
     async function flushBackupToFirebase(isAuto = true, options = {}) {
         if (!isDataChanged || isBackupInFlight) return false;
         if (backupTimer) {
@@ -3015,6 +3024,7 @@
         if(score === 3) {
             revealAnswer();
             console.log('NEXT_CARD_SUCCESS', { skipped: true, reason: 'confirm', currentIndex, currentCardUuid: getCurrentCardId() });
+            setTimeout(backupReviewNow, 0);
             return;
         }
         console.log('NEXT_CARD_START', { fromIndex: currentIndex, activeDeckLength: activeDeck.length });
@@ -3026,6 +3036,7 @@
             moveCard(0);
             console.log('NEXT_CARD_SUCCESS', { completed: true, currentIndex, currentCardUuid: getCurrentCardId() });
         }
+        setTimeout(backupReviewNow, 0);
     }
 
     function getVirtualDate(ts) { const d = new Date(ts); if(d.getHours() < 4) d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d; }
@@ -3710,23 +3721,39 @@
     async function syncLatestFirebaseBackupOnStartup() {
         try {
             console.log('AUTO_SYNC_START');
-            const localState = loadLocalStudyState();
-            const cloudState = await loadCloudStudyState();
-            const localUpdatedAt = Number(localState && localState.updatedAt) || 0;
-            const cloudUpdatedAt = Number(cloudState && cloudState.updatedAt) || 0;
-            console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
-            console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
-            if (!cloudState) {
+            const latest = await getLatestYokiBackupIndexRecord();
+            if (!latest || !latest.ts) {
                 console.log('AUTO_SYNC_SOURCE local');
                 console.log('AUTO_SYNC_APPLIED', false);
-                restorePosition(localState.viewState || {}, 'local');
-                logStudyStateSnapshot('auto-sync-local', localState);
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
+            const localUpdatedAt = getLocalDataUpdatedAt();
+            const indexUpdatedAt = getBackupUpdatedAt(latest.index, latest.ts);
+            const lastAutoSyncAt = Number(getStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT)) || 0;
+            if (indexUpdatedAt <= localUpdatedAt || indexUpdatedAt <= lastAutoSyncAt) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_APPLIED', false);
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
+            const res = await fetch(`${FIREBASE_DB_URL}${latest.path}/${latest.ts}.json?_t=${Date.now()}`, { cache: 'no-store' });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!isYokiBackupRecord(data, latest.path)) return;
+            const cloudUpdatedAt = getBackupUpdatedAt(data, latest.ts);
+            console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
+            console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
+            if (cloudUpdatedAt <= localUpdatedAt || cloudUpdatedAt <= lastAutoSyncAt) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_APPLIED', false);
                 console.log('AUTO_SYNC_COMPLETE');
                 return;
             }
             console.log('AUTO_SYNC_SOURCE cloud');
-            applyRestoredState(cloudState, 'cloud');
+            await restoreFromFirebase(latest.ts, true, latest.path);
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(cloudUpdatedAt));
+            markLocalDataUpdated(Math.max(localUpdatedAt, cloudUpdatedAt));
             console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
             showToast('최신 클라우드 데이터 동기화 완료', 'success');
