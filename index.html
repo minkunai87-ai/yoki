@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.35 - 카드맵 진단 정리 및 백업 경량화)</title>
+<title>Yoki (v11.18.36 - 카드 메모)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -184,6 +184,19 @@
     #toast.show { bottom: 85px; opacity: 1; } 
     #toast.error { background: #fa5252; color: white; }
     #toast.success { background: #40c057; color: white; }
+
+    .note-card-btn { width: auto !important; min-width: 64px; padding: 0 8px !important; font-size: 0.74rem !important; }
+    .note-card-btn.has-note { border-color: #ffd43b !important; color: #ffd43b !important; background: rgba(250,176,5,0.12) !important; }
+    .note-list-controls { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 12px; }
+    .note-sort-btn { border:1px solid var(--border); background:var(--input-bg); color:var(--text); border-radius:8px; padding:8px 10px; font-size:0.82rem; cursor:pointer; }
+    .note-sort-btn.active { border-color:var(--primary); color:var(--primary); }
+    .note-list { max-height:58vh; overflow:auto; display:flex; flex-direction:column; gap:10px; padding-right:2px; }
+    .note-item { border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--input-bg); }
+    .note-deck { font-weight:700; color:var(--text); font-size:0.9rem; margin-bottom:5px; word-break:break-word; }
+    .note-meta { color:var(--text-sub); font-size:0.78rem; margin-bottom:8px; }
+    .note-body { color:var(--text); white-space:pre-wrap; word-break:break-word; line-height:1.45; font-size:0.92rem; margin-bottom:10px; }
+    .note-jump-btn { border:0; border-radius:8px; padding:8px 12px; background:var(--primary); color:#111; font-weight:700; cursor:pointer; }
+
 </style>
 </head>
 <body>
@@ -214,6 +227,7 @@
         <div class="menu-section">
             <span class="menu-label">덱 관리</span>
             <ul class="deck-list" id="deck-list-ui"></ul>
+            <button class="btn-sub" onclick="openAllNotesModal()">📝 전체 메모</button>
         </div>
         
         <div style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px; padding-bottom: 30px;">
@@ -227,7 +241,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.35 - 카드맵 진단 정리 및 백업 경량화)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.36 - 카드 메모)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -340,6 +354,7 @@
                         <div class="icon-wrapper">
                             <div class="icon-row">
                                 <button class="icon-btn edit-btn" onclick="openEditModal(event)">✏️</button>
+                                <button class="icon-btn note-card-btn" id="note-btn" onclick="openCardNoteModal(event)">📝 메모</button>
                                 <button class="icon-btn mem-btn" id="mem-btn" onclick="toggleTag(event, 'mem')">🧠</button>
                                 <button class="icon-btn cmp-btn" id="cmp-btn" onclick="toggleTag(event, 'cmp')">🆚</button>
                                 <button class="icon-btn fav-btn" id="fav-btn" onclick="toggleTag(event, 'fav')">⭐</button>
@@ -393,6 +408,32 @@
         </div>
     </div>
 
+
+    <div class="modal-overlay" id="card-note-modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0; color:var(--text);">📝 카드 메모</h3>
+            <textarea id="card-note-input" class="edit-input" style="min-height:160px;" placeholder="이 카드에 남길 메모를 입력하세요"></textarea>
+            <div class="modal-btns">
+                <button class="modal-btn btn-save" onclick="saveCurrentCardNote()">저장</button>
+                <button class="modal-btn btn-cancel" onclick="closeCardNoteModal()">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="all-notes-modal">
+        <div class="modal-content" style="max-width:720px; width:94%;">
+            <h3 id="all-notes-title" style="margin-top:0; color:var(--text);">📝 전체 메모</h3>
+            <input type="text" id="notes-search-input" class="search-input" placeholder="메모, 덱, 카드 내용 검색" oninput="renderAllNotesList()">
+            <div class="note-list-controls">
+                <button class="note-sort-btn active" id="note-sort-recent" onclick="setNotesSortMode('recent')">최근 작성순</button>
+                <button class="note-sort-btn" id="note-sort-wrong" onclick="setNotesSortMode('wrong')">오답순</button>
+                <button class="note-sort-btn" id="note-sort-lowRate" onclick="setNotesSortMode('lowRate')">정답률 낮은순</button>
+            </div>
+            <div id="all-notes-list" class="note-list"></div>
+            <div class="modal-btns"><button class="modal-btn btn-cancel" onclick="closeAllNotesModal()">닫기</button></div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="fb-modal">
         <div class="modal-content">
             <div style="font-weight:bold; font-size:1.2rem; color:var(--text);">🔥 파이어베이스 백업 센터</div>
@@ -422,7 +463,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.35 - 카드맵 진단 정리 및 백업 경량화';
+    const APP_VERSION = 'v11.18.36 - 카드 메모';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -451,6 +492,7 @@
     const STORAGE_KEY_CARD_ID_MAP = 'yoki_card_id_map_v1';
     const STORAGE_KEY_SEARCH_QUERY = 'yoki_search_query';
     const STORAGE_KEY_TARGET_RETENTION = 'yoki_target_retention';
+    const STORAGE_KEY_NOTES = 'yoki_notes_by_card_uuid_v1';
     const STORAGE_KEY_LAST_SYNC_TIME = 'yoki_last_sync_time';
     const STORAGE_KEY_RESTORE_PENDING = 'yoki_restore_pending';
     const STORAGE_KEY_MIGRATION_DONE = 'yoki_storage_migration_v1_done';
@@ -1136,6 +1178,7 @@
                 filter: getStorageItem(STORAGE_KEY_FILTER_STATE) || '{}',
                 targetRetention: getStorageItem(STORAGE_KEY_TARGET_RETENTION) || '0.90', 
                 localEdits: getStorageItem(STORAGE_KEY_LOCAL_EDITS) || '{}',
+                notesByCardUuid: getStorageItem(STORAGE_KEY_NOTES) || '{}',
                 cardIdMap: getStorageItem(STORAGE_KEY_CARD_ID_MAP) || '{}',
                 searchQuery: getStorageItem(STORAGE_KEY_SEARCH_QUERY) || '',
                 timestamp: metadata.backupAt,
@@ -2392,6 +2435,7 @@
         const card = activeDeck[currentIndex]; const s = getStats(card);
         document.getElementById('card-counter').innerText = `${currentIndex + 1} / ${activeDeck.length}`;
         updateStatsUI(s); updateIconsUI(s); renderRateHistory(s);
+        updateNoteButtonState();
         const qDiv = document.getElementById('question-section'); qDiv.innerHTML = ''; qDiv.appendChild(createDOM(card.q, false));
         const aDiv = document.getElementById('answer-section'); aDiv.innerHTML = ''; aDiv.appendChild(createDOM(card.a, true));
         bindImageZoomHandlers(qDiv);
@@ -3154,8 +3198,10 @@
         const raw = payload.raw || payload;
         const stats = payload.stats || getBackupStatsCandidate(raw);
         const reviewHistory = payload.reviewHistory || parseJSONSafe(raw && raw.reviewHistory, {});
+        const incomingNotes = payload.notesByCardUuid || normalizeNotesByCardUuid(raw && raw.notesByCardUuid);
         if(stats && Object.keys(stats).length) setItemSafe(STORAGE_KEY_STATS, JSON.stringify(stats));
         if(reviewHistory && Object.keys(reviewHistory).length) setItemSafe(STORAGE_KEY_REVIEW_HISTORY, JSON.stringify(reviewHistory));
+        if(hasBackupField(raw, 'notesByCardUuid')) setNotesByCardUuid(incomingNotes);
         if(hasBackupField(raw, 'progress')) setItemSafe(STORAGE_KEY_PROGRESS, raw.progress);
         if(hasBackupField(raw, 'filter')) setItemSafe(STORAGE_KEY_FILTER_STATE, raw.filter);
         if(hasBackupField(raw, 'targetRetention')) {
@@ -3704,6 +3750,28 @@
         });
         return Array.from(byId.values());
     }
+
+
+    let notesSortMode = 'recent';
+    function getNotesByCardUuid() { return parseJSONSafe(getStorageItem(STORAGE_KEY_NOTES), {}); }
+    function setNotesByCardUuid(notes) { if(notes && Object.keys(notes).length) { setStorageItem(STORAGE_KEY_NOTES, JSON.stringify(notes)); } else { removeStorageItem(STORAGE_KEY_NOTES); } }
+    function getStatsById(cardId) { const stats = getStatsStore(); return stats && stats[String(cardId)] ? stats[String(cardId)] : { correct: 0, total: 0 }; }
+    function normalizeNotesByCardUuid(value) { const parsed = parseJSONSafe(value, {}); const result = {}; Object.entries(parsed || {}).forEach(([cardUuid, raw]) => { const noteText = typeof raw === 'string' ? raw : String(raw && raw.note || ''); const note = noteText.trim(); if(!cardUuid || !note) return; result[String(cardUuid)] = { note, deckPath: String(raw && raw.deckPath || ''), updatedAt: Number(raw && raw.updatedAt) || 0 }; }); return result; }
+    function getCurrentNoteCard() { return activeDeck && activeDeck[currentIndex] ? activeDeck[currentIndex] : null; }
+    function updateNoteButtonState() { const btn = document.getElementById('note-btn'); if(!btn) return; const card = getCurrentNoteCard(); const notes = getNotesByCardUuid(); const hasNote = !!(card && notes[String(card.id)] && String(notes[String(card.id)].note || '').trim()); btn.classList.toggle('has-note', hasNote); btn.textContent = hasNote ? '📝 메모 있음' : '📝 메모'; }
+    function openCardNoteModal(event) { if(event) event.stopPropagation(); const card = getCurrentNoteCard(); if(!card) { showToast('메모할 카드가 없습니다.', 'error'); return; } const notes = getNotesByCardUuid(); const input = document.getElementById('card-note-input'); if(input) input.value = notes[String(card.id)] ? String(notes[String(card.id)].note || '') : ''; const modal = document.getElementById('card-note-modal'); if(modal) modal.style.display = 'flex'; setTimeout(() => input && input.focus(), 0); }
+    function closeCardNoteModal() { const modal = document.getElementById('card-note-modal'); if(modal) modal.style.display = 'none'; }
+    function saveCurrentCardNote() { const card = getCurrentNoteCard(); if(!card) return; const input = document.getElementById('card-note-input'); const note = String(input && input.value || '').trim(); const notes = getNotesByCardUuid(); const cardUuid = String(card.id); if(note) notes[cardUuid] = { note, deckPath: String(card.deck || currentDeckName || ''), updatedAt: Date.now() }; else delete notes[cardUuid]; setNotesByCardUuid(notes); markLocalDataUpdated(Date.now()); scheduleBackup('note'); updateNoteButtonState(); closeCardNoteModal(); showToast(note ? '메모를 저장했습니다.' : '메모를 삭제했습니다.', 'success'); }
+    function escapeNoteHtml(value) { return String(value || '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch])); }
+    function stripNoteText(value) { const div = document.createElement('div'); div.innerHTML = String(value || ''); return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim(); }
+    function getNoteCardText(card) { return card ? stripNoteText([card.q, card.a, card.question, card.answer].filter(Boolean).join(' ')) : ''; }
+    function getRelativeReviewText(ts) { const time = Number(ts) || 0; if(!time) return '기록 없음'; const days = Math.max(0, Math.floor((Date.now() - time) / 86400000)); return days === 0 ? '오늘' : days + '일 전'; }
+    function getNoteEntries() { const notes = getNotesByCardUuid(); return Object.entries(notes).map(([cardId, noteData]) => { const location = findCardLocationById(cardId); const card = location && location.card ? location.card : findCardById(cardId); const stats = card ? getStats(card) : getStatsById(cardId); const accuracy = getAccuracyStats(stats); const total = Number(accuracy.total) || 0; const correct = Number(accuracy.correct) || 0; const rate = total > 0 ? Math.round((correct / total) * 100) : 0; const wrong = Math.max(0, Math.round(total - correct)); return { cardId:String(cardId), note:String(noteData && noteData.note || ''), deckPath:String((location && location.deck) || (noteData && noteData.deckPath) || (card && card.deck) || ''), updatedAt:Number(noteData && noteData.updatedAt) || 0, card, rate, wrong, lastDate:Number(stats && stats.lastDate) || 0, searchText:[noteData && noteData.note, location && location.deck, noteData && noteData.deckPath, getNoteCardText(card)].join(' ').toLowerCase() }; }).filter(item => item.note.trim()); }
+    function openAllNotesModal() { const sidebar = document.getElementById('sidebar'); const overlay = document.querySelector('.sidebar-overlay'); if(sidebar) sidebar.classList.remove('open'); if(overlay) overlay.classList.remove('open'); const modal = document.getElementById('all-notes-modal'); if(modal) modal.style.display = 'flex'; renderAllNotesList(); }
+    function closeAllNotesModal() { const modal = document.getElementById('all-notes-modal'); if(modal) modal.style.display = 'none'; }
+    function setNotesSortMode(mode) { notesSortMode = mode; ['recent','wrong','lowRate'].forEach(key => { const el = document.getElementById('note-sort-' + key); if(el) el.classList.toggle('active', key === mode); }); renderAllNotesList(); }
+    function renderAllNotesList() { const list = document.getElementById('all-notes-list'); if(!list) return; const query = String((document.getElementById('notes-search-input') || {}).value || '').trim().toLowerCase(); let entries = getNoteEntries(); const totalCount = entries.length; if(query) entries = entries.filter(item => item.searchText.includes(query)); entries.sort((a,b) => notesSortMode === 'wrong' ? ((b.wrong - a.wrong) || (b.updatedAt - a.updatedAt)) : (notesSortMode === 'lowRate' ? ((a.rate - b.rate) || (b.wrong - a.wrong) || (b.updatedAt - a.updatedAt)) : (b.updatedAt - a.updatedAt))); const title = document.getElementById('all-notes-title'); if(title) title.textContent = '📝 전체 메모 ' + totalCount + '개'; if(!entries.length) { list.innerHTML = '<div style="color:var(--text-sub); padding:16px; text-align:center;">표시할 메모가 없습니다.</div>'; return; } list.innerHTML = entries.map(item => '<div class="note-item">' + '<div class="note-deck">' + escapeNoteHtml((item.deckPath || '덱 없음').replace(/__/g, ' > ')) + '</div>' + '<div class="note-meta">정답률 ' + item.rate + '% · 오답 ' + item.wrong + '회 · 최근 복습 ' + escapeNoteHtml(getRelativeReviewText(item.lastDate)) + '</div>' + '<div class="note-body">' + escapeNoteHtml(item.note) + '</div>' + '<button class="note-jump-btn" data-card-id="' + escapeNoteHtml(item.cardId) + '" onclick="jumpToNoteCard(this.dataset.cardId)">카드 이동</button>' + '</div>').join(''); }
+    function jumpToNoteCard(cardId) { const location = findCardLocationById(cardId); if(!location || !location.card) { showToast('카드를 찾을 수 없습니다.', 'error'); return false; } selectDeck(location.deck, true); const targetId = String(cardId); let index = activeDeck.findIndex(card => String(card && card.id) === targetId || (Array.isArray(card && card.idCandidates) && card.idCandidates.map(String).includes(targetId))); if(index < 0) { originalDeck = library[location.deck] || []; activeDeck = [location.card].concat((activeDeck || []).filter(card => String(card && card.id) !== targetId)); index = 0; } currentIndex = Math.max(0, index); setItemSafe(STORAGE_KEY_LAST_DECK, location.deck); setItemSafe(STORAGE_KEY_LAST_DECK_MODE, 'deck'); saveCurrentProgress(); persistCurrentViewState(true); showCard(); closeAllNotesModal(); showToast('카드로 이동했습니다.', 'success'); return true; }
 
     function getStats(cardOrId) {
         const stats = getStatsStore();
