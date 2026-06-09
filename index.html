@@ -1510,6 +1510,31 @@
             logYokiStorageDiagnostics('before-firebase-restore', targetData);
             const normalizedManualPayload = normalizeBackupPayload(targetData, isAutoPull ? 'auto-restore' : 'manual-restore', ts, backupPath);
             applyRestoredState(normalizedManualPayload, normalizedManualPayload.source);
+            setItemSafe(STORAGE_KEY_LAST_SYNC_TIME, ts.toString());
+            logYokiStorageDiagnostics('after-unified-firebase-restore');
+            library = {};
+            originalDeck = [];
+            activeDeck = [];
+            currentIndex = 0;
+            await autoScanGitHub();
+            migrateLoadedLibraryStatsToYokiIds(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore');
+            saveStatsToIndexedDBFallback(getStatsStore());
+            const unifiedSavedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
+            if(unifiedSavedSearch && document.getElementById('search-input')) document.getElementById('search-input').value = unifiedSavedSearch;
+            initApp();
+            showCard();
+            logRestoreStatsCounts('afterUnifiedRender', getStatsStore());
+            const unifiedFbModal = document.getElementById('fb-modal');
+            if(unifiedFbModal) unifiedFbModal.style.display = 'none';
+            console.log('RESTORE_COMPLETE', {
+                source: normalizedManualPayload.source,
+                engine: 'unified',
+                positionRestored: !!getCurrentCardId(),
+                stats: countRestoreStats(getStatsStore()),
+                currentCardId: getCurrentCardId()
+            });
+            showToast("☁️ 복구 완료", "success");
+            return;
             const existingStatsBeforeRestore = getStatsStore();
             const restoredStatsOriginal = getBackupStatsCandidate(targetData);
             logRestoreStatsCounts('backup', restoredStatsOriginal);
@@ -3464,7 +3489,8 @@
         if(hasBackupField(raw, 'cardIdMap')) setItemSafe(STORAGE_KEY_CARD_ID_MAP, raw.cardIdMap);
         if(hasBackupField(raw, 'searchQuery')) setItemSafe(STORAGE_KEY_SEARCH_QUERY, raw.searchQuery);
         const restoredViewState = restorePosition(payload.viewState || getBackupViewState(raw), source);
-        markLocalDataUpdated(Math.max(getLocalDataUpdatedAt(), Number(payload.updatedAt) || Date.now()));
+        const restoredUpdatedAt = Number(payload.updatedAt) || getLocalDataUpdatedAt();
+        if(restoredUpdatedAt) markLocalDataUpdated(Math.max(getLocalDataUpdatedAt(), restoredUpdatedAt));
         logStudyStateSnapshot('restore', { stats, reviewHistory, viewState: restoredViewState });
         console.log('RESTORE_COMPLETE', { source, currentCardUuid: restoredViewState.currentCardUuid || restoredViewState.cardId || '' });
         return restoredViewState;
