@@ -2868,7 +2868,12 @@
     function moveCard(d) { let n = currentIndex + d; if(n >= 0 && n < activeDeck.length) { previousCardIndex = currentIndex; currentIndex = n; saveCurrentProgress(); showCard(); } }
 
     function grade(score) {
+        console.log('REVIEW_BUTTON_CLICK', { score, currentIndex, currentCardUuid: getCurrentCardId() });
         const card = activeDeck[currentIndex];
+        if(!card) {
+            console.warn('REVIEW_BUTTON_CLICK no-card', { score, currentIndex });
+            return;
+        }
         const data = getStatsStore();
         const id = String(card.id);
         saveRecentDeck();
@@ -2931,7 +2936,29 @@
         setStorageItem(STORAGE_KEY_STATS, JSON.stringify(data));
         markLocalDataUpdated(data[id].updatedAt);
         scheduleBackup('review');
-        if(currentIndex < activeDeck.length - 1) moveCard(1); else { alert("학습 완료!"); moveCard(0); }
+        updateStatsUI(data[id]);
+        renderRateHistory(data[id]);
+        console.log('REVIEW_SAVED', {
+            cardId: id,
+            score,
+            lastViewedAt: data[id].lastDate,
+            nextReviewDate: data[id].dueDate || null,
+            fsrs: data[id].fsrs || null
+        });
+        if(score === 3) {
+            revealAnswer();
+            console.log('NEXT_CARD_SUCCESS', { skipped: true, reason: 'confirm', currentIndex, currentCardUuid: getCurrentCardId() });
+            return;
+        }
+        console.log('NEXT_CARD_START', { fromIndex: currentIndex, activeDeckLength: activeDeck.length });
+        if(currentIndex < activeDeck.length - 1) {
+            moveCard(1);
+            console.log('NEXT_CARD_SUCCESS', { currentIndex, currentCardUuid: getCurrentCardId() });
+        } else {
+            alert("학습 완료!");
+            moveCard(0);
+            console.log('NEXT_CARD_SUCCESS', { completed: true, currentIndex, currentCardUuid: getCurrentCardId() });
+        }
     }
 
     function getVirtualDate(ts) { const d = new Date(ts); if(d.getHours() < 4) d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d; }
@@ -3315,6 +3342,25 @@
         return state;
     }
 
+    function mergeHistoryByCardId(localHistory = {}, cloudHistory = {}) {
+        const merged = { ...(localHistory || {}) };
+        Object.entries(cloudHistory || {}).forEach(([cardId, cloudItems]) => {
+            if (!Array.isArray(cloudItems)) return;
+            const localItems = Array.isArray(merged[cardId]) ? merged[cardId] : [];
+            const seen = new Set(localItems.map(item => `${item && item.id || ''}|${getHistoryItemTime(item)}|${item && item.score}|${item && item.result || ''}`));
+            const next = [...localItems];
+            cloudItems.forEach(item => {
+                const key = `${item && item.id || ''}|${getHistoryItemTime(item)}|${item && item.score}|${item && item.result || ''}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    next.push(item);
+                }
+            });
+            merged[cardId] = next.sort((a, b) => getHistoryItemTime(b) - getHistoryItemTime(a)).slice(0, 300);
+        });
+        return merged;
+    }
+
     function mergeStatsHistory(localStat = {}, cloudStat = {}) {
         const localHistory = Array.isArray(localStat.history) ? localStat.history : [];
         const cloudHistory = Array.isArray(cloudStat.history) ? cloudStat.history : [];
@@ -3366,31 +3412,77 @@
 
     async function syncLatestFirebaseBackupOnStartup() {
         try {
+            console.log('AUTO_SYNC_START');
             const latest = await getLatestYokiBackupIndexRecord();
-            if (!latest || !latest.ts) return;
+            if (!latest || !latest.ts) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
             const cloudUpdatedAt = getBackupUpdatedAt(latest.index, latest.ts);
             const localUpdatedAt = getLocalDataUpdatedAt();
             const lastAutoSyncAt = Number(getStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT)) || 0;
-            if (cloudUpdatedAt <= localUpdatedAt || cloudUpdatedAt <= lastAutoSyncAt) return;
+            console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
+            console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
+            if (cloudUpdatedAt <= localUpdatedAt || cloudUpdatedAt <= lastAutoSyncAt) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
 
             const res = await fetch(`${FIREBASE_DB_URL}${latest.path}/${latest.ts}.json?_t=${Date.now()}`);
-            if (!res.ok) return;
+            if (!res.ok) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
             const data = await res.json();
-            if (!isYokiBackupRecord(data, latest.path)) return;
+            if (!isYokiBackupRecord(data, latest.path)) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
             const verifiedCloudUpdatedAt = getBackupUpdatedAt(data, latest.ts);
-            if (verifiedCloudUpdatedAt <= localUpdatedAt || verifiedCloudUpdatedAt <= lastAutoSyncAt) return;
+            console.log(`CLOUD_UPDATED_AT ${verifiedCloudUpdatedAt}`);
+            if (verifiedCloudUpdatedAt <= localUpdatedAt || verifiedCloudUpdatedAt <= lastAutoSyncAt) {
+                console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_COMPLETE');
+                return;
+            }
 
             const localStats = getStatsStore();
             const cloudStats = getBackupStatsCandidate(data);
+            const localHistory = parseJSONSafe(getStorageItem(STORAGE_KEY_REVIEW_HISTORY), {});
+            const cloudHistory = parseJSONSafe(data && data.reviewHistory, {});
+            const mergedHistory = mergeHistoryByCardId(localHistory, cloudHistory);
             const mergedStats = mergeStatsByCardId(localStats, cloudStats);
             if (setItemSafe(STORAGE_KEY_STATS, JSON.stringify(mergedStats))) {
+                if (hasBackupField(data, 'reviewHistory')) setItemSafe(STORAGE_KEY_REVIEW_HISTORY, JSON.stringify(mergedHistory));
+                if (hasBackupField(data, 'progress')) setItemSafe(STORAGE_KEY_PROGRESS, data.progress);
+                if (hasBackupField(data, 'filter')) setItemSafe(STORAGE_KEY_FILTER_STATE, data.filter);
+                if (hasBackupField(data, 'targetRetention')) {
+                    setItemSafe(STORAGE_KEY_TARGET_RETENTION, data.targetRetention);
+                    targetRetention = parseFloat(getStorageItem(STORAGE_KEY_TARGET_RETENTION)) || 0.90;
+                    updateTRButton();
+                }
+                if (hasBackupField(data, 'localEdits')) setItemSafe(STORAGE_KEY_LOCAL_EDITS, data.localEdits);
+                if (hasBackupField(data, 'cardIdMap')) setItemSafe(STORAGE_KEY_CARD_ID_MAP, data.cardIdMap);
+                if (hasBackupField(data, 'searchQuery')) setItemSafe(STORAGE_KEY_SEARCH_QUERY, data.searchQuery);
                 setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(verifiedCloudUpdatedAt));
                 markLocalDataUpdated(Math.max(localUpdatedAt, verifiedCloudUpdatedAt));
                 persistBackupPositionState(data, 'backup');
+                console.log('AUTO_SYNC_SOURCE cloud');
+                console.log('AUTO_SYNC_COMPLETE', {
+                    statsKeyCount: Object.keys(mergedStats || {}).length,
+                    reviewHistoryKeyCount: Object.keys(mergedHistory || {}).length,
+                    currentCardUuid: getStartupTargetCardId(getBackupViewState(data))
+                });
                 showToast('최신 클라우드 데이터 동기화 완료', 'success');
             }
         } catch(e) {
             console.error('[Yoki Auto Cloud Sync Error]', e);
+            console.log('AUTO_SYNC_SOURCE local');
+            console.log('AUTO_SYNC_COMPLETE');
         }
     }
 
