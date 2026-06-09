@@ -1255,18 +1255,21 @@
                 const mapErrorText = await mapRes.text().catch(() => '');
                 throw new Error(`Firebase cardIdentityMap ${mapRes.status} ${mapErrorText || mapRes.statusText || 'map update failed'}`);
             }
+            console.log('BACKUP_WRITE_PATH', `${FIREBASE_BACKUP_PATH}/${data.timestamp}`);
             const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payloadText, keepalive: !!options.keepalive });
             if(res.ok) { 
                 try {
-                    await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}/${data.timestamp}.json`, {
+                    const indexRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}/${data.timestamp}.json`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(backupIndexData),
                         keepalive: !!options.keepalive
                     });
+                    console.log('BACKUP_INDEX_WRITE_SUCCESS', indexRes.ok);
                 } catch(indexError) {
                     console.error('[Yoki Backup Index Error]', indexError);
                 }
+                console.log('BACKUP_WRITE_SUCCESS', true);
                 isDataChanged = false; 
                 setStorageItem(STORAGE_KEY_LAST_SYNC_TIME, data.timestamp.toString()); 
                 updateCloudIcon('done'); if(!options.keepalive) cleanupOldBackups(); 
@@ -3490,12 +3493,23 @@
 
     async function loadCloudStudyState() {
         const latest = await getLatestYokiBackupIndexRecord();
-        if(!latest || !latest.ts) return null;
+        console.log('CLOUD_PATH_USED', latest && latest.ts ? `${latest.path}/${latest.ts}` : null);
+        if(!latest || !latest.ts) {
+            console.log('CLOUD_BACKUP_FOUND', false);
+            return null;
+        }
         const res = await fetch(`${FIREBASE_DB_URL}${latest.path}/${latest.ts}.json?_t=${Date.now()}`, { cache: 'no-store' });
-        if(!res.ok) return null;
+        if(!res.ok) {
+            console.log('CLOUD_BACKUP_FOUND', false);
+            return null;
+        }
         const data = await res.json();
-        if(!isYokiBackupRecord(data, latest.path)) return null;
-        return normalizeBackupPayload(data, 'cloud', latest.ts, latest.path, latest.index);
+        const isBackup = isYokiBackupRecord(data, latest.path);
+        console.log('CLOUD_BACKUP_FOUND', isBackup);
+        if(!isBackup) return null;
+        const payload = normalizeBackupPayload(data, 'cloud', latest.ts, latest.path, latest.index);
+        console.log('CLOUD_BACKUP_UPDATED_AT', payload.updatedAt);
+        return payload;
     }
 
     function normalizeBackupPayload(raw = {}, source = 'backup', ts = raw && raw.timestamp, path = FIREBASE_BACKUP_PATH, index = {}) {
@@ -3561,6 +3575,7 @@
 
     function backupStudyState(reason = 'manual', options = {}) {
         if(reason !== 'review' && reason !== 'manual') return false;
+        console.log('BACKUP_STUDY_STATE_CALL', { reason, writePath: FIREBASE_BACKUP_PATH });
         return flushBackupToFirebase(reason === 'review', options);
     }
 
@@ -3690,11 +3705,11 @@
             const cloudState = await loadCloudStudyState();
             const localUpdatedAt = Number(localState && localState.updatedAt) || 0;
             const cloudUpdatedAt = Number(cloudState && cloudState.updatedAt) || 0;
-            const lastAutoSyncAt = Number(getStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT)) || 0;
             console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
             console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
-            if (!cloudState || cloudUpdatedAt <= localUpdatedAt || cloudUpdatedAt <= lastAutoSyncAt) {
+            if (!cloudState || cloudUpdatedAt <= localUpdatedAt) {
                 console.log('AUTO_SYNC_SOURCE local');
+                console.log('AUTO_SYNC_APPLIED', false);
                 restorePosition(localState.viewState || {}, 'local');
                 logStudyStateSnapshot('auto-sync-local', localState);
                 console.log('AUTO_SYNC_COMPLETE');
@@ -3703,6 +3718,7 @@
             applyRestoredState(cloudState, 'cloud');
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(cloudUpdatedAt));
             console.log('AUTO_SYNC_SOURCE cloud');
+            console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
             showToast('최신 클라우드 데이터 동기화 완료', 'success');
         } catch(e) {
