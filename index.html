@@ -3396,7 +3396,10 @@
             markLocalDataUpdated(viewState.updatedAt);
             logStudyStateSnapshot('save', { viewState });
             console.log('SAVE_SUCCESS', { reason, currentCardUuid: viewState.currentCardUuid });
-            if(options.backup) backupStudyState(reason, options);
+            if(options.backup) {
+                isDataChanged = true;
+                backupStudyState(reason, options);
+            }
             return { ok: true, viewState };
         } catch(e) {
             console.error('SAVE_FAIL', { reason, error: e && e.message ? e.message : String(e) });
