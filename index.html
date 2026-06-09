@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.34 - 공통 저장복원엔진)</title>
+<title>Yoki (v11.18.35 - 카드맵 진단 정리 및 백업 경량화)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -219,9 +219,6 @@
         <div style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px; padding-bottom: 30px;">
             <span class="menu-label">💾 데이터 & 설정</span>
             <button class="btn-sub" onclick="exportData()">💾 로컬 백업 저장</button>
-            <button class="btn-sub" onclick="exportYokiIdTxt()">🆔 Yoki ID 포함 txt 내보내기</button>
-            <button class="btn-sub" onclick="openRecoveryDiagnostics()">🧪 복구 진단</button>
-            <button class="btn-sub" onclick="cleanupPollutedRecoveryData()">🧹 오염된 복구 데이터 정리</button>
             <button class="btn-sub" onclick="document.getElementById('backup-input').click()">📂 로컬 백업 불러오기</button>
             <input type="file" id="backup-input" accept=".json" style="display:none" onchange="importData(this)">
             
@@ -230,7 +227,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.34 - 공통 저장복원엔진)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.35 - 카드맵 진단 정리 및 백업 경량화)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -425,17 +422,12 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.34 - 공통 저장복원엔진';
+    const APP_VERSION = 'v11.18.35 - 카드맵 진단 정리 및 백업 경량화';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
     let previousCardIndex = null;
     let currentFilterMode = 'default', currentSortMode = 'original', currentSecondarySortMode = 'none', imageMap = new Map();
-    let lastFirebaseCardIdentityMap = {};
-    let lastFirebaseCardIdentityMapSource = '';
-    let lastCardIdentityMapDiagnostics = {};
-    let lastLegacyImageStatsMap = {};
-    let lastLegacyImageStatsMapDiagnostics = {};
     let lastRecoveryPollutionDiagnostics = {};
     let pendingStartupViewState = null;
     let inMemoryStatsStore = null;
@@ -466,7 +458,6 @@
     const STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT = 'yoki_last_auto_cloud_sync_at';
     const FIREBASE_BACKUP_PATH = '/apps/yoki/backups';
     const FIREBASE_BACKUP_INDEX_PATH = '/apps/yoki/backupIndex';
-    const FIREBASE_CARD_IDENTITY_MAP_PATH = '/apps/yoki/cardIdentityMap';
     const FIREBASE_BACKUP_KEEP_COUNT = 20;
     const LEGACY_STORAGE_KEYS = {};
     LEGACY_STORAGE_KEYS[STORAGE_KEY_LIBRARY] = 'anki_final_library';
@@ -1137,62 +1128,6 @@
             const metadata = getBackupMetadata();
             const backupStats = getStatsStore();
             const currentCardUuid = getCurrentCardId();
-            let legacyImageStatsMap = {};
-            try {
-                legacyImageStatsMap = buildLegacyImageStatsMap(backupStats);
-            } catch(e) {
-                console.error('[Legacy Image Map Build Error]', e);
-                legacyImageStatsMap = {};
-            }
-            const cardIdentityMap = buildCardIdentityMap();
-            try {
-                legacyImageStatsMap = buildLegacyImageStatsMap(backupStats, cardIdentityMap);
-            } catch(e) {
-                console.error('[Legacy Image Map Rebuild Error]', e);
-            }
-            const legacyImageStatsEntries = Object.entries(legacyImageStatsMap || {});
-            const cardIdentityMapEntries = Object.entries(cardIdentityMap);
-            const cardIdentityMapSize = cardIdentityMapEntries.length;
-            const cardIdentityMapSample = cardIdentityMapEntries.slice(0, 5).map(([fingerprint, entry]) => ({
-                fingerprint,
-                entry: {
-                    ...entry,
-                    statsIdExists: !!(entry && entry.statsId && hasStatsKey(backupStats, entry.statsId))
-                }
-            }));
-            const entriesWithStatsId = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId).length;
-            const entriesWithoutStatsId = cardIdentityMapSize - entriesWithStatsId;
-            const statsIdExistsCount = cardIdentityMapEntries.filter(([fingerprint, entry]) => entry && entry.statsId && hasStatsKey(backupStats, entry.statsId)).length;
-            const invalidStatsEntries = cardIdentityMapEntries
-                .filter(([fingerprint, entry]) => entry && entry.statsId && !hasStatsKey(backupStats, entry.statsId));
-            const identityDiagnostics = {
-                ...lastCardIdentityMapDiagnostics,
-                backupStatsKeyCount: Object.keys(backupStats || {}).length,
-                backupStatsSample20: Object.keys(backupStats || {}).slice(0, 20),
-                cardIdentityMapSize,
-                entriesWithStatsId,
-                entriesWithoutStatsId,
-                statsIdExistsCount,
-                invalidStatsIdCount: invalidStatsEntries.length,
-                sampleInvalidStatsIds: invalidStatsEntries.slice(0, 10).map(([fingerprint, entry]) => ({ fingerprint, statsId: entry.statsId, cardId: entry.cardId, statsIdSource: entry.statsIdSource, candidateIds: entry.candidateIds })),
-                legacyImageStatsMapSize: legacyImageStatsEntries.length,
-                rawImageKeyCount: lastLegacyImageStatsMapDiagnostics.rawImageKeyCount || 0,
-                uniquePasteImageKeyCount: lastLegacyImageStatsMapDiagnostics.uniquePasteImageKeyCount || 0,
-                duplicateImageKeyCount: lastLegacyImageStatsMapDiagnostics.duplicateImageKeyCount || 0,
-                skippedCommonImageKeyCount: lastLegacyImageStatsMapDiagnostics.skippedCommonImageKeyCount || 0
-            };
-            lastCardIdentityMapDiagnostics = identityDiagnostics;
-            lastFirebaseCardIdentityMap = cardIdentityMap;
-            lastLegacyImageStatsMap = legacyImageStatsMap;
-            lastFirebaseCardIdentityMapSource = 'backup-generated';
-            console.log('[Yoki Firebase Backup CardIdentityMap]', { ...identityDiagnostics, sample: cardIdentityMapSample });
-            if(!isAuto) showToast(`🧭 카드맵 ${cardIdentityMapSize}개 생성`, cardIdentityMapSize > 0 ? 'normal' : 'error');
-            if(cardIdentityMapSize === 0) {
-                updateCloudIcon('error');
-                console.error('[Yoki Firebase Backup Blocked]', 'cardIdentityMapSize is 0');
-                if(!isAuto) showToast('❌ 카드맵이 0개라 백업을 중단했습니다.', 'error');
-                return false;
-            }
             const data = { 
                 appId: 'yoki',
                 appVersion: APP_VERSION,
@@ -1218,26 +1153,14 @@
                 localUpdatedAt: getLocalDataUpdatedAt(),
                 metadata: { ...metadata, localUpdatedAt: getLocalDataUpdatedAt() }
             };
-            const latestIdentityMapData = {
-                appId: 'yoki',
-                appVersion: APP_VERSION,
-                updatedAt: data.timestamp,
-                cardIdentityMap,
-                cardIdentityMapDiagnostics: identityDiagnostics,
-                legacyImageStatsMap: legacyImageStatsEntries,
-                legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics
-            };
             const payloadText = JSON.stringify(data);
             const payloadSizeKB = Math.round(payloadText.length / 1024);
             const payloadBreakdownKB = {
                 totalKB: payloadSizeKB,
                 statsKB: Math.round(JSON.stringify(data.stats || '').length / 1024),
-                cardIdentityMapKB: Math.round(JSON.stringify(cardIdentityMap || {}).length / 1024),
+                cardIdentityMapKB: 0,
                 libraryKB: Math.round(JSON.stringify(data.library || '').length / 1024),
-                diagnosticsKB: Math.round(JSON.stringify({
-                    cardIdentityMapDiagnostics: identityDiagnostics || {},
-                    legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics || {}
-                }).length / 1024)
+                diagnosticsKB: 0
             };
             const backupIndexData = {
                 timestamp: data.timestamp,
@@ -1245,7 +1168,6 @@
                 appVersion: APP_VERSION,
                 metadata,
                 statsKeyCount: Object.keys(backupStats || {}).length,
-                cardIdentityMapSize,
                 localUpdatedAt: data.localUpdatedAt,
                 createdAt: Date.now()
             };
@@ -1253,17 +1175,9 @@
             console.log('[Yoki Backup Payload Breakdown KB]', payloadBreakdownKB);
             console.log('[Yoki Backup Diagnostic]', {
                 statsKeyCount: Object.keys(backupStats || {}).length,
-                cardIdentityMapSize,
-                legacyImageStatsMapSize: legacyImageStatsEntries.length,
-                cardIdentityMapPath: FIREBASE_CARD_IDENTITY_MAP_PATH,
                 payloadSizeKB,
                 payloadBreakdownKB
             });
-            const mapRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_CARD_IDENTITY_MAP_PATH}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(latestIdentityMapData), keepalive: !!options.keepalive });
-            if(!mapRes.ok) {
-                const mapErrorText = await mapRes.text().catch(() => '');
-                throw new Error(`Firebase cardIdentityMap ${mapRes.status} ${mapErrorText || mapRes.statusText || 'map update failed'}`);
-            }
             console.log('BACKUP_WRITE_PATH', `${FIREBASE_BACKUP_PATH}/${data.timestamp}`);
             const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_PATH}/${data.timestamp}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: payloadText, keepalive: !!options.keepalive });
             if(res.ok) { 
@@ -1464,19 +1378,6 @@
         }
     }
 
-    async function fetchLatestCardIdentityMapData() {
-        try {
-            const res = await fetch(`${FIREBASE_DB_URL}${FIREBASE_CARD_IDENTITY_MAP_PATH}.json?_t=${Date.now()}`, { cache: 'no-store' });
-            if(!res.ok) return null;
-            const data = await res.json();
-            if(!data || typeof data !== 'object' || data.appId !== 'yoki') return null;
-            return data;
-        } catch(e) {
-            console.error('[Yoki Firebase CardIdentityMap Fetch Error]', e);
-            return null;
-        }
-    }
-
     async function fetchFirebaseList() {
         document.getElementById('fb-auth-section').style.display = 'none';
         document.getElementById('fb-list-section').style.display = 'block';
@@ -1531,24 +1432,6 @@
             const targetData = await res.json();
             if(!targetData || typeof targetData !== 'object') throw new Error('Firebase restore data is empty');
             if(!isYokiBackupRecord(targetData, backupPath)) throw new Error(`Blocked non-Yoki backup restore: ${targetData.appId || 'unknown'}`);
-            const latestMapData = hasBackupField(targetData, 'cardIdentityMap') ? null : await fetchLatestCardIdentityMapData();
-            const identityMapSourceData = latestMapData || targetData;
-            const restoredCardIdentityMap = parseJSONSafe(identityMapSourceData.cardIdentityMap, {});
-            lastFirebaseCardIdentityMap = restoredCardIdentityMap && typeof restoredCardIdentityMap === 'object' ? restoredCardIdentityMap : {};
-            lastFirebaseCardIdentityMapSource = latestMapData ? FIREBASE_CARD_IDENTITY_MAP_PATH : `${backupPath}/${ts}`;
-            lastCardIdentityMapDiagnostics = parseJSONSafe(identityMapSourceData.cardIdentityMapDiagnostics, {});
-            lastLegacyImageStatsMap = normalizeLegacyImageStatsMap(parseJSONSafe(identityMapSourceData.legacyImageStatsMap, identityMapSourceData.legacyImageStatsMap || {}));
-            lastLegacyImageStatsMapDiagnostics = parseJSONSafe(identityMapSourceData.legacyImageStatsMapDiagnostics, {});
-            console.log('[Yoki Firebase Restore CardIdentityMap]', {
-                exists: !!identityMapSourceData.cardIdentityMap,
-                latestPathUsed: !!latestMapData,
-                size: Object.keys(lastFirebaseCardIdentityMap || {}).length,
-                diagnostics: lastCardIdentityMapDiagnostics,
-                legacyImageStatsMapSize: Object.keys(lastLegacyImageStatsMap || {}).length,
-                legacyImageStatsMapDiagnostics: lastLegacyImageStatsMapDiagnostics,
-                sample: Object.entries(lastFirebaseCardIdentityMap || {}).slice(0, 5).map(([fingerprint, cardId]) => ({ fingerprint, cardId })),
-                source: lastFirebaseCardIdentityMapSource
-            });
             logYokiStorageDiagnostics('before-firebase-restore', targetData);
             const normalizedManualPayload = normalizeBackupPayload(targetData, isAutoPull ? 'auto-restore' : 'manual-restore', ts, backupPath);
             applyRestoredState(normalizedManualPayload, normalizedManualPayload.source);
@@ -1577,117 +1460,6 @@
             });
             showToast("☁️ 복구 완료", "success");
             return;
-            const existingStatsBeforeRestore = getStatsStore();
-            const restoredStatsOriginal = getBackupStatsCandidate(targetData);
-            logRestoreStatsCounts('backup', restoredStatsOriginal);
-            const backupStatsKeyCount = Object.keys(restoredStatsOriginal || {}).length;
-            const restoredPositionState = persistBackupPositionState(targetData, 'backup');
-            console.log('RESTORE_POSITION', restoredPositionState);
-
-            const restoreField = (field, storageKey) => {
-                if(hasBackupField(targetData, field)) setItemSafe(storageKey, targetData[field]);
-            };
-
-            const mergedInitialStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal };
-            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(mergedInitialStats));
-            logRestoreStatsCounts('afterInitialSet', getStatsStore());
-            restoreField('progress', STORAGE_KEY_PROGRESS);
-            restoreField('filter', STORAGE_KEY_FILTER_STATE);
-            restoreField('targetRetention', STORAGE_KEY_TARGET_RETENTION);
-            restoreField('localEdits', STORAGE_KEY_LOCAL_EDITS);
-            restoreField('cardIdMap', STORAGE_KEY_CARD_ID_MAP);
-            restoreField('searchQuery', STORAGE_KEY_SEARCH_QUERY);
-            persistBackupPositionState({ ...targetData, viewState: restoredPositionState }, 'backup');
-            const restoredStatsForCheck = getStatsStore();
-            const restoredStatsKeys = Object.keys(restoredStatsForCheck || {});
-            console.log('[Yoki Restore Stats Merge]', {
-                stage: 'after-initial-restore',
-                existingBeforeCount: Object.keys(existingStatsBeforeRestore || {}).length,
-                backupStatsKeyCount,
-                restoredStatsKeyCount: restoredStatsKeys.length
-            });
-            lastCardIdentityMapDiagnostics = {
-                ...lastCardIdentityMapDiagnostics,
-                backupStatsKeyCount,
-                restoredStatsKeyCount: restoredStatsKeys.length,
-                restoredStatsSample20: restoredStatsKeys.slice(0, 20)
-            };
-            const mismatchExamples = Object.entries(lastFirebaseCardIdentityMap || {})
-                .map(([fingerprint, entry]) => ({ fingerprint, entry: normalizeCardIdentityEntry(entry) }))
-                .filter(item => item.entry.statsId && item.entry.rawEntry && item.entry.rawEntry.statsIdExists === true && !hasStatsKey(restoredStatsForCheck, item.entry.statsId))
-                .slice(0, 10)
-                .map(item => ({ fingerprint: item.fingerprint, statsId: item.entry.statsId, cardId: item.entry.cardId }));
-            if(mismatchExamples.length) {
-                console.warn('[CARDMAP/STATS MISMATCH]', {
-                    backupStatsKeyCount: lastCardIdentityMapDiagnostics.backupStatsKeyCount,
-                    backupStatsSample20: lastCardIdentityMapDiagnostics.backupStatsSample20,
-                    restoredStatsKeyCount: lastCardIdentityMapDiagnostics.restoredStatsKeyCount,
-                    restoredStatsSample20: lastCardIdentityMapDiagnostics.restoredStatsSample20,
-                    mismatchExamples
-                });
-            }
-            targetRetention = parseFloat(getStorageItem(STORAGE_KEY_TARGET_RETENTION)) || 0.90;
-            updateTRButton();
-
-            console.log('[Yoki Restore Diagnostic]', 'no localStorage deletion, compression, or truncation applied');
-
-            setItemSafe(STORAGE_KEY_LAST_SYNC_TIME, ts.toString());
-            logYokiStorageDiagnostics('after-firebase-restore');
-            library = {};
-            originalDeck = [];
-            activeDeck = [];
-            currentIndex = 0;
-            await autoScanGitHub();
-            const statsAfterScan = getStatsStore();
-            console.log('[Yoki Restore Stats Merge]', {
-                stage: 'after-autoScanGitHub',
-                backupStatsKeyCount,
-                statsKeyCount: Object.keys(statsAfterScan || {}).length
-            });
-            migrateLoadedLibraryStatsToYokiIds(isAutoPull ? 'firebase-auto-restore' : 'firebase-manual-restore');
-            const statsAfterMigration = getStatsStore();
-            const finalStats = { ...existingStatsBeforeRestore, ...restoredStatsOriginal, ...statsAfterMigration };
-            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(finalStats));
-            logRestoreStatsCounts('afterFinalSet', getStatsStore());
-            saveStatsToIndexedDBFallback(getStatsStore());
-            cleanupUnsafeRecoveredStats(finalStats, lastFirebaseCardIdentityMap);
-            const finalStatsKeyCount = Object.keys(finalStats || {}).length;
-            lastCardIdentityMapDiagnostics = {
-                ...lastCardIdentityMapDiagnostics,
-                restoredStatsKeyCount: finalStatsKeyCount,
-                restoredStatsSample20: Object.keys(finalStats || {}).slice(0, 20)
-            };
-            console.log('[Yoki Restore Stats Merge]', {
-                stage: 'final-merge',
-                backupStatsKeyCount,
-                afterMigrationCount: Object.keys(statsAfterMigration || {}).length,
-                finalStatsKeyCount
-            });
-            if(finalStatsKeyCount < backupStatsKeyCount) {
-                const message = `복구 오류: stats ${backupStatsKeyCount}개 중 ${finalStatsKeyCount}개만 보존됨`;
-                console.error('[Yoki Restore Stats Shrink Error]', { backupStatsKeyCount, finalStatsKeyCount });
-                showToast(message, 'error');
-            }
-            const savedSearch = getStorageItem(STORAGE_KEY_SEARCH_QUERY);
-            if (savedSearch && document.getElementById('search-input')) document.getElementById('search-input').value = savedSearch;
-            try {
-                initApp();
-            } catch(initError) {
-                console.error('[Yoki Restore Init Error]', initError);
-                showDeckLoadError(initError);
-                return;
-            }
-            console.log('[Yoki Restore Match Disabled]', APP_VERSION);
-            showCard();
-            logRestoreStatsCounts('afterRender', getStatsStore());
-            const fbModal = document.getElementById('fb-modal');
-            if(fbModal) fbModal.style.display = 'none';
-            console.log('RESTORE_COMPLETE', {
-                positionRestored: !!getCurrentCardId(),
-                stats: countRestoreStats(getStatsStore()),
-                currentCardId: getCurrentCardId()
-            });
-            showToast("☁️ 복구 완료: 카드 로드 우선 모드", "success");
         } catch(e) { 
             console.error('[Firebase Restore Error]', e);
             if(!isAutoPull) document.getElementById('fb-list-ui').innerHTML = `<div style="padding:20px; text-align:center; color:#fa5252;">복구 중 에러가 발생했습니다.</div>`; 
@@ -1968,103 +1740,6 @@
         return getCardStatsCandidates(card, stats).find(id => isRealNumericStatsId(id, stats)) || '';
     }
 
-    function buildLegacyLibraryStatsIndex(stats) {
-        const legacyLibrary = parseJSONSafe(localStorage.getItem('anki_final_library'), {});
-        const legacyEntries = collectLibraryCardEntries(legacyLibrary);
-        const byFingerprint = new Map();
-        legacyEntries.forEach(({ deckName, card }) => {
-            if(!card || card.id === undefined || card.id === null) return;
-            const legacyCardId = String(card.id);
-            const legacyStatsId = getExistingStatsIdForCard(card, stats);
-            if(!legacyStatsId || !stats[legacyStatsId]) return;
-            const fingerprint = getStableFingerprintForCard(card, deckName);
-            if(!fingerprint || byFingerprint.has(fingerprint)) return;
-            byFingerprint.set(fingerprint, {
-                statsId: String(legacyStatsId),
-                cardId: legacyCardId,
-                deck: String(card.deck || deckName || ''),
-                imageSrcs: getImageSrcCandidatesForCard(card),
-                candidateIds: getCardStatsCandidates(card, stats).slice(0, 12)
-            });
-        });
-        return {
-            byFingerprint,
-            legacyLibraryExists: !!(legacyLibrary && typeof legacyLibrary === 'object' && Object.keys(legacyLibrary).length),
-            legacyLibraryCardCount: legacyEntries.length
-        };
-    }
-
-    function buildLegacyImageStatsMap(stats, cardIdentityMap = null) {
-        const legacyLibrary = parseJSONSafe(localStorage.getItem('anki_final_library'), {});
-        const legacyEntries = collectLibraryCardEntries(legacyLibrary);
-        const imageBuckets = new Map();
-        const map = {};
-        let rawImageKeyCount = 0;
-        let skippedCommonImageKeyCount = 0;
-        let skippedNonRealStatsIdCount = 0;
-        let candidateEntryCount = 0;
-        let numericStatsEntryCount = 0;
-        let imageMapInsertCount = 0;
-
-        if(cardIdentityMap && typeof cardIdentityMap === 'object') {
-            Object.values(cardIdentityMap).forEach(entry => {
-                if(!entry || typeof entry !== 'object') return;
-                candidateEntryCount++;
-                const statsId = String(entry.statsId || '');
-                if(!isRealNumericStatsId(statsId, stats)) return;
-                numericStatsEntryCount++;
-                const imageFiles = Array.isArray(entry.imageCandidateFiles) ? entry.imageCandidateFiles : [];
-                imageFiles.forEach(fileName => {
-                    if(!fileName) return;
-                    rawImageKeyCount++;
-                    if(!imageBuckets.has(fileName)) imageBuckets.set(fileName, []);
-                    imageBuckets.get(fileName).push(statsId);
-                    imageMapInsertCount++;
-                });
-            });
-        }
-
-        legacyEntries.forEach(({ card }) => {
-            if(!card || card.id === undefined || card.id === null) return;
-            const legacyStatsId = getExistingStatsIdForCard(card, stats);
-            if(!isRealNumericStatsId(legacyStatsId, stats)) {
-                skippedNonRealStatsIdCount++;
-                return;
-            }
-            getImageFileNamesForCard(card).forEach(fileName => {
-                if(!fileName) return;
-                rawImageKeyCount++;
-                if(!isUniquePasteImageFileName(fileName)) {
-                    skippedCommonImageKeyCount++;
-                    return;
-                }
-                if(!imageBuckets.has(fileName)) imageBuckets.set(fileName, []);
-                imageBuckets.get(fileName).push(String(legacyStatsId));
-            });
-        });
-        const duplicateImageKeys = [];
-        imageBuckets.forEach((statsIds, fileName) => {
-            const realStatsIds = [...new Set(statsIds.filter(id => isRealNumericStatsId(id, stats)))];
-            if(realStatsIds.length === 1) map[fileName] = realStatsIds[0];
-            else duplicateImageKeys.push(fileName);
-        });
-        const mapValues = Object.values(map);
-        lastLegacyImageStatsMapDiagnostics = {
-            rawImageKeyCount,
-            uniquePasteImageKeyCount: Object.keys(map).length,
-            duplicateImageKeyCount: duplicateImageKeys.length,
-            skippedCommonImageKeyCount,
-            skippedNonRealStatsIdCount,
-            candidateEntryCount,
-            numericStatsEntryCount,
-            imageMapInsertCount,
-            legacyImageStatsMapYokiValueCount: mapValues.filter(id => String(id).startsWith('yoki_')).length,
-            legacyImageStatsMapRealStatsValueCount: mapValues.filter(id => isRealNumericStatsId(id, stats)).length,
-            duplicateImageKeys: duplicateImageKeys.slice(0, 500)
-        };
-        return map;
-    }
-
     function normalizeLegacyImageStatsMap(value) {
         if(Array.isArray(value)) {
             const map = {};
@@ -2081,71 +1756,6 @@
             return map;
         }
         return {};
-    }
-
-    function buildCardIdentityMap() {
-        const map = {};
-        const stats = getStatsStore();
-        const legacyIndex = buildLegacyLibraryStatsIndex(stats);
-        const legacyImageStatsMap = buildLegacyImageStatsMap(stats);
-        let legacyFingerprintMatches = 0;
-        let legacyImageStatsMatches = 0;
-        collectLibraryCardEntries(library || {}).forEach(({ deckName, card }) => {
-            const fingerprint = getStableFingerprintForCard(card, deckName);
-            if(!fingerprint || !card || card.id === undefined || card.id === null) return;
-            const cardId = String(card.id);
-            const candidateIds = getCardStatsCandidates(card, stats);
-            let statsId = candidateIds.find(id => isRealNumericStatsId(id, stats)) || '';
-            let statsIdSource = statsId ? 'current-candidates' : '';
-            const legacyMatch = legacyIndex.byFingerprint.get(fingerprint);
-            if(legacyMatch && isRealNumericStatsId(legacyMatch.statsId, stats)) {
-                legacyFingerprintMatches++;
-                if(!statsId) {
-                    statsId = legacyMatch.statsId;
-                    statsIdSource = 'anki_final_library';
-                }
-            }
-            if(!statsId) {
-                const imageStatsId = getImageFileNamesForCard(card).map(fileName => legacyImageStatsMap[fileName]).find(id => isRealNumericStatsId(id, stats)) || '';
-                if(imageStatsId) {
-                    legacyImageStatsMatches++;
-                    statsId = String(imageStatsId);
-                    statsIdSource = 'legacy-image-map';
-                }
-            }
-            if(statsId && !hasStatsKey(stats, statsId)) {
-                console.warn('[Yoki Card Identity Invalid StatsId Dropped]', { cardId, statsId, statsIdSource, candidateIds });
-                statsId = '';
-                statsIdSource = '';
-            }
-            if(statsId) console.log('[CARDMAP BUILD]', statsId, !!stats[statsId], hasStatsKey(stats, statsId));
-            map[fingerprint] = {
-                cardId,
-                statsId: statsId ? String(statsId) : '',
-                statsIdExists: !!(statsId && hasStatsKey(stats, statsId)),
-                statsIdSource,
-                legacyCardId: legacyMatch ? legacyMatch.cardId : '',
-                imageSrcs: getImageSrcCandidatesForCard(card),
-                deck: String(card.deck || deckName || ''),
-                questionLength: String(card.q || '').length,
-                normalizedQuestion: normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 180),
-                candidateIds: candidateIds.slice(0, 12),
-                imageCandidateFiles: getImageFileNamesForCard(card).slice(0, 12)
-            };
-        });
-        const entries = Object.values(map);
-        const invalidEntries = entries.filter(entry => entry && entry.statsId && !hasStatsKey(stats, entry.statsId));
-        lastCardIdentityMapDiagnostics = {
-            legacyLibraryExists: legacyIndex.legacyLibraryExists,
-            legacyLibraryCardCount: legacyIndex.legacyLibraryCardCount,
-            legacyFingerprintMatches,
-            legacyImageStatsMatches,
-            entriesWithRealStatsId: entries.filter(entry => entry && entry.statsId && hasStatsKey(stats, entry.statsId)).length,
-            invalidStatsIdCount: invalidEntries.length,
-            sampleInvalidStatsIds: invalidEntries.slice(0, 10).map(entry => ({ cardId: entry.cardId, statsId: entry.statsId, statsIdSource: entry.statsIdSource, candidateIds: entry.candidateIds }))
-        };
-        console.log('[Yoki Card Identity Map]', { count: Object.keys(map).length, ...lastCardIdentityMapDiagnostics });
-        return map;
     }
 
     function getLegacyFingerprints(deckName, q, a, rowIndex) {
@@ -3011,7 +2621,7 @@
         setItemSafe(STORAGE_KEY_STATS, JSON.stringify(data));
         saveStatsToIndexedDBFallback(data);
         markLocalDataUpdated(data[id].updatedAt);
-        saveStudyState('review', { backup: true });
+        saveStudyState('review', { backup: false });
         updateStatsUI(data[id]);
         renderRateHistory(data[id]);
         console.log('REVIEW_SAVED', {
@@ -4095,616 +3705,11 @@
         return Array.from(byId.values());
     }
 
-    function normalizeCardIdentityEntry(rawEntry) {
-        if(!rawEntry) return { cardId: '', statsId: '', imageSrcs: [], deck: '', rawEntry };
-        if(typeof rawEntry === 'string' || typeof rawEntry === 'number') {
-            const id = String(rawEntry);
-            return { cardId: id, statsId: /^[0-9]+$/.test(id) ? id : '', imageSrcs: [], deck: '', candidateIds: [], rawEntry };
-        }
-        if(typeof rawEntry === 'object') {
-            const cardId = rawEntry.cardId || rawEntry.id || rawEntry.yokiId || '';
-            const rawStatsId = rawEntry.statsId || rawEntry.matchedStatsId || rawEntry.legacyStatsId || '';
-            const statsId = /^[0-9]+$/.test(String(rawStatsId || '')) ? String(rawStatsId) : '';
-            return {
-                cardId: cardId ? String(cardId) : '',
-                statsId,
-                imageSrcs: Array.isArray(rawEntry.imageSrcs) ? rawEntry.imageSrcs : [],
-                deck: rawEntry.deck || '',
-                candidateIds: Array.isArray(rawEntry.candidateIds) ? rawEntry.candidateIds.map(String) : [],
-                rawEntry
-            };
-        }
-        return { cardId: '', statsId: '', imageSrcs: [], deck: '', rawEntry };
-    }
-
-    function findLegacyImageMappedStatsForCard(card, stats = getStatsStore(), legacyImageStatsMap = lastLegacyImageStatsMap) {
-        legacyImageStatsMap = normalizeLegacyImageStatsMap(legacyImageStatsMap);
-        const imageFiles = getImageFileNamesForCard(card).filter(isUniquePasteImageFileName);
-        for(const imageFile of imageFiles) {
-            const statsId = legacyImageStatsMap && legacyImageStatsMap[imageFile] ? String(legacyImageStatsMap[imageFile]) : '';
-            if(isRealNumericStatsId(statsId, stats)) {
-                return { matchedImageFile: imageFile, imageMappedStatsId: statsId, imageMappedStatsExists: true };
-            }
-        }
-        const firstImageFile = imageFiles[0] || '';
-        const firstMappedId = firstImageFile && legacyImageStatsMap ? String(legacyImageStatsMap[firstImageFile] || '') : '';
-        return {
-            matchedImageFile: firstImageFile,
-            imageMappedStatsId: firstMappedId,
-            imageMappedStatsExists: isRealNumericStatsId(firstMappedId, stats)
-        };
-    }
-
-    function getExactFingerprintStatsIdForCard(card, stats = getStatsStore(), identityMap = lastFirebaseCardIdentityMap) {
-        if(!card || !identityMap) return '';
-        const fingerprint = getStableFingerprintForCard(card, card.deck || currentDeckName || '');
-        const entry = normalizeCardIdentityEntry(identityMap[fingerprint]);
-        return isRealNumericStatsId(entry.statsId, stats) ? entry.statsId : '';
-    }
-
-    function collectCurrentCardIds() {
-        const ids = new Set();
-        Object.values(library || {}).forEach(cards => {
-            if(!Array.isArray(cards)) return;
-            cards.forEach(card => {
-                if(card && card.id !== undefined && card.id !== null) ids.add(String(card.id));
-            });
-        });
-        return ids;
-    }
-
-    function cleanupUnsafeRecoveredStats(stats = getStatsStore(), identityMap = lastFirebaseCardIdentityMap) {
-        const currentIds = collectCurrentCardIds();
-        const exactAllowedIds = new Set();
-        Object.entries(identityMap || {}).forEach(([fingerprint, rawEntry]) => {
-            const entry = normalizeCardIdentityEntry(rawEntry);
-            if(entry.cardId && entry.statsId && isRealNumericStatsId(entry.statsId, stats)) exactAllowedIds.add(String(entry.cardId));
-        });
-        const removed = [];
-        currentIds.forEach(cardId => {
-            if(!String(cardId).startsWith('yoki_')) return;
-            if(exactAllowedIds.has(cardId)) return;
-            const stat = stats[cardId];
-            if(!stat) return;
-            if(!stat._relinkedFromStatsId) return;
-            const hasHistory = Array.isArray(stat.history) && stat.history.length > 0;
-            if(hasHistory || Number(stat.total) > 0 || stat.lastDate || stat.dueDate) {
-                delete stats[cardId];
-                removed.push(cardId);
-            }
-        });
-        lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsCount = removed.length;
-        lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsSample = removed.slice(0, 20);
-        if(removed.length) {
-            setItemSafe(STORAGE_KEY_STATS, JSON.stringify(stats));
-            console.warn('[Yoki Recovery Pollution Cleanup]', { removedCount: removed.length, sample: removed.slice(0, 20) });
-        }
-        return removed.length;
-    }
-
-    function getStatsPollutionSignature(stat) {
-        if(!stat || typeof stat !== 'object') return '';
-        const history = Array.isArray(stat.history) ? stat.history : [];
-        const historyKey = history.map(item => [
-            item && item.score,
-            item && item.result,
-            item && item.type,
-            item && item.points,
-            item && item.time
-        ].join(':')).join('|');
-        return JSON.stringify({
-            total: Number(stat.total) || 0,
-            correct: Number(stat.correct) || 0,
-            lastDate: stat.lastDate || 0,
-            dueDate: stat.dueDate || '',
-            interval: stat.interval || '',
-            fsrs: stat.fsrs || null,
-            historyKey
-        });
-    }
-
-    function getExactIdentityForCurrentCard(card, deckName, stats, identityMap) {
-        const fingerprint = getStableFingerprintForCard(card, deckName || (card && card.deck) || currentDeckName || '');
-        const rawEntry = fingerprint && identityMap ? identityMap[fingerprint] : null;
-        const entry = normalizeCardIdentityEntry(rawEntry);
-        const currentId = card && card.id !== undefined && card.id !== null ? String(card.id) : '';
-        const statsIdExists = !!(entry.statsId && hasStatsKey(stats, entry.statsId));
-        const fingerprintExactMatch = !!(fingerprint && rawEntry);
-        const cardIdMatches = !!(currentId && entry.cardId && String(entry.cardId) === currentId);
-        return {
-            fingerprint,
-            entry,
-            rawEntry,
-            statsIdExists,
-            fingerprintExactMatch,
-            cardIdMatches,
-            safeExact: !!(currentId && hasStatsKey(stats, currentId) && fingerprintExactMatch && statsIdExists && (cardIdMatches || fingerprintExactMatch))
-        };
-    }
-
-    function downloadStatsCleanupBackup(statsBackupText, timestamp) {
-        const fileName = `yoki_stats_before_cleanup_${timestamp}.json`;
-        const blob = new Blob([statsBackupText], { type: 'application/json;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        return fileName;
-    }
-
-    function compactStatsForQuotaRetry(stats) {
-        Object.values(stats || {}).forEach(stat => {
-            if(!stat || typeof stat !== 'object') return;
-            delete stat._relinkedFromStatsId;
-            delete stat._relinkedBy;
-        });
-        return stats;
-    }
-
-    function saveCleanupStatsWithRetry(stats) {
-        try {
-            setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
-            return { saved: true, compacted: false, error: null };
-        } catch(firstError) {
-            console.warn('[Yoki Cleanup Stats Save Retry]', firstError);
-            try {
-                compactStatsForQuotaRetry(stats);
-                setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
-                return { saved: true, compacted: true, error: firstError };
-            } catch(secondError) {
-                console.error('[Yoki Cleanup Stats Save Failed]', secondError);
-                return { saved: false, compacted: true, error: secondError };
-            }
-        }
-    }
-
-    function cleanupPollutedRecoveryData() {
-        let backupFileName = '';
-        try {
-            const stats = getStatsStore();
-            const statsBackupText = JSON.stringify(stats);
-            backupFileName = downloadStatsCleanupBackup(statsBackupText, Date.now());
-
-            const beforeStatsKeyCount = Object.keys(stats).length;
-            const identityMap = lastFirebaseCardIdentityMap || {};
-            const currentEntries = collectLibraryCardEntries(library || {});
-            const currentIds = new Set(currentEntries
-                .map(({ card }) => card && card.id !== undefined && card.id !== null ? String(card.id) : '')
-                .filter(Boolean));
-            const linkedStatsIdGroups = new Map();
-            const signatureGroups = new Map();
-            const metadataByCurrentId = new Map();
-
-            currentEntries.forEach(({ deckName, card }) => {
-                if(!card || card.id === undefined || card.id === null) return;
-                const currentId = String(card.id);
-                if(!hasStatsKey(stats, currentId)) return;
-                const stat = stats[currentId];
-                const identity = getExactIdentityForCurrentCard(card, deckName, stats, identityMap);
-                const relinkedFrom = String(stat && stat._relinkedFromStatsId || '');
-                const relinkedBy = String(stat && stat._relinkedBy || '');
-                const entrySource = String(identity.entry.rawEntry && identity.entry.rawEntry.statsIdSource || '');
-                const linkedStatsId = relinkedFrom || identity.entry.statsId || '';
-                const signature = getStatsPollutionSignature(stat);
-                const images = getImageFileNamesForCard(card);
-                const pasteImages = images.filter(isUniquePasteImageFileName);
-                const unsafeImageSource = /legacy-image-map|image-match|unique-image-deck/i.test(`${relinkedBy} ${entrySource}`);
-
-                if(linkedStatsId) {
-                    if(!linkedStatsIdGroups.has(linkedStatsId)) linkedStatsIdGroups.set(linkedStatsId, []);
-                    linkedStatsIdGroups.get(linkedStatsId).push(currentId);
-                }
-                if(signature && ((Number(stat.total) || 0) > 0 || (Array.isArray(stat.history) && stat.history.length))) {
-                    if(!signatureGroups.has(signature)) signatureGroups.set(signature, []);
-                    signatureGroups.get(signature).push(currentId);
-                }
-
-                metadataByCurrentId.set(currentId, {
-                    currentId,
-                    stat,
-                    identity,
-                    relinkedFrom,
-                    relinkedBy,
-                    entrySource,
-                    linkedStatsId,
-                    signature,
-                    unsafeImageSource,
-                    hasOnlyUnsafeImages: unsafeImageSource && (!pasteImages.length || pasteImages.length !== images.length),
-                    hasLearningData: (Number(stat.total) || 0) > 0 || (Array.isArray(stat.history) && stat.history.length > 0) || !!stat.lastDate || !!stat.dueDate
-                });
-            });
-
-            const duplicateLinkedStatsIds = new Set([...linkedStatsIdGroups.entries()]
-                .filter(([statsId, ids]) => statsId && ids.length > 1)
-                .map(([statsId]) => statsId));
-            const duplicateSignatures = new Set([...signatureGroups.entries()]
-                .filter(([signature, ids]) => signature && ids.length > 1)
-                .map(([signature]) => signature));
-            const duplicateStatsGroupsFound = duplicateLinkedStatsIds.size + duplicateSignatures.size;
-            const deletedIds = [];
-            const deleteReasons = {};
-
-            metadataByCurrentId.forEach(meta => {
-                const currentId = meta.currentId;
-                if(!currentIds.has(currentId)) return;
-                if(/^[0-9]+$/.test(currentId)) return;
-                if(!String(currentId).startsWith('yoki_')) return;
-
-                const hasPollutionMarker = !!(meta.relinkedFrom || meta.relinkedBy);
-                const duplicatedStatsId = meta.linkedStatsId && duplicateLinkedStatsIds.has(meta.linkedStatsId);
-                const duplicatedSignature = meta.signature && duplicateSignatures.has(meta.signature);
-                const fingerprintMismatch = !!(meta.identity.rawEntry && meta.identity.entry.cardId && String(meta.identity.entry.cardId) !== currentId);
-                const unsafeImageMatch = !!meta.hasOnlyUnsafeImages;
-                const suddenLearningData = meta.hasLearningData && !meta.identity.safeExact && (hasPollutionMarker || duplicatedStatsId || duplicatedSignature || unsafeImageMatch || fingerprintMismatch);
-                const shouldDelete = !meta.identity.safeExact && (
-                    duplicatedStatsId ||
-                    duplicatedSignature ||
-                    unsafeImageMatch ||
-                    fingerprintMismatch ||
-                    suddenLearningData ||
-                    (hasPollutionMarker && meta.hasLearningData)
-                );
-
-                if(!shouldDelete) return;
-                delete stats[currentId];
-                deletedIds.push(currentId);
-                deleteReasons[currentId] = {
-                    duplicatedStatsId: !!duplicatedStatsId,
-                    duplicatedSignature: !!duplicatedSignature,
-                    unsafeImageMatch,
-                    fingerprintMismatch,
-                    suddenLearningData,
-                    relinkedFrom: meta.relinkedFrom,
-                    relinkedBy: meta.relinkedBy,
-                    entrySource: meta.entrySource
-                };
-            });
-
-            const saveResult = saveCleanupStatsWithRetry(stats);
-            const afterStatsKeyCount = Object.keys(stats).length;
-            const sampleDeleteReasons = {};
-            deletedIds.slice(0, 10).forEach(id => { sampleDeleteReasons[id] = deleteReasons[id]; });
-            const result = {
-                backupFileName,
-                saveResult,
-                beforeStatsKeyCount,
-                afterStatsKeyCount,
-                deletedPollutedCurrentStatsCount: deletedIds.length,
-                preservedLegacyStatsCount: Object.keys(stats).filter(key => /^[0-9]+$/.test(String(key)) && !currentIds.has(String(key))).length,
-                duplicateStatsGroupsFound,
-                sampleDeletedIds: deletedIds.slice(0, 30),
-                sampleDeleteReasons
-            };
-            lastRecoveryPollutionDiagnostics = {
-                ...lastRecoveryPollutionDiagnostics,
-                manualCleanup: result,
-                deletedPollutedCurrentStatsCount: result.deletedPollutedCurrentStatsCount,
-                preservedLegacyStatsCount: result.preservedLegacyStatsCount,
-                duplicateStatsGroupsFound: result.duplicateStatsGroupsFound,
-                sampleDeletedIds: result.sampleDeletedIds
-            };
-            console.warn('[Yoki Polluted Recovery Data Cleanup]', result);
-            if(saveResult.saved) {
-                showCard();
-                showToast(`🧹 오염 데이터 정리 완료: ${deletedIds.length}개 제거`, 'success');
-            } else {
-                showToast('저장 실패: 로컬 백업 파일은 다운로드됨', 'error');
-            }
-            return result;
-        } catch(e) {
-            console.error('[Yoki Polluted Cleanup Error]', e);
-            const message = e && e.message ? e.message : String(e);
-            showToast(`정리 실패: ${message}`, 'error');
-            return null;
-        }
-    }
-
-    function getLegacyImageMapStatusForCard(card, legacyImageStatsMap = lastLegacyImageStatsMap, diagnostics = lastLegacyImageStatsMapDiagnostics) {
-        legacyImageStatsMap = normalizeLegacyImageStatsMap(legacyImageStatsMap);
-        const allImages = getImageFileNamesForCard(card);
-        const pasteImages = allImages.filter(isUniquePasteImageFileName);
-        const matchedImage = pasteImages.find(fileName => !!legacyImageStatsMap[fileName]) || '';
-        if(matchedImage) {
-            return { currentImageInLegacyMap: true, currentImageSkippedReason: '', currentPasteImages: pasteImages };
-        }
-        const duplicateKeys = Array.isArray(diagnostics && diagnostics.duplicateImageKeys) ? diagnostics.duplicateImageKeys : [];
-        const duplicatedPaste = pasteImages.find(fileName => duplicateKeys.includes(fileName));
-        if(duplicatedPaste) {
-            return { currentImageInLegacyMap: false, currentImageSkippedReason: `duplicate-image-key:${duplicatedPaste}`, currentPasteImages: pasteImages };
-        }
-        if(!allImages.length) return { currentImageInLegacyMap: false, currentImageSkippedReason: 'no-image', currentPasteImages: pasteImages };
-        if(!pasteImages.length) return { currentImageInLegacyMap: false, currentImageSkippedReason: 'no-paste-image-common-skipped', currentPasteImages: pasteImages };
-        return { currentImageInLegacyMap: false, currentImageSkippedReason: `paste-image-not-in-legacy-map:${pasteImages[0]}`, currentPasteImages: pasteImages };
-    }
-
-    function getFingerprintSimilarityMatches(card, cardIdentityMap = lastFirebaseCardIdentityMap) {
-        if(!card || !cardIdentityMap) return [];
-        const currentQuestion = normalizeCardTextForId(card.q).replace(/<[^>]*>/g, ' ').slice(0, 180);
-        const currentImages = getImageSrcCandidatesForCard(card);
-        const currentFiles = getImageFileNamesForCard(card);
-        const currentDeck = String(card.deck || currentDeckName || '');
-        return Object.entries(cardIdentityMap || {}).map(([fingerprint, rawEntry]) => {
-            const entry = normalizeCardIdentityEntry(rawEntry);
-            const raw = entry.rawEntry && typeof entry.rawEntry === 'object' ? entry.rawEntry : {};
-            const entryImages = Array.isArray(raw.imageSrcs) ? raw.imageSrcs.map(String) : [];
-            const entryFiles = Array.isArray(raw.imageCandidateFiles) ? raw.imageCandidateFiles.map(String) : [];
-            const normalizedQuestion = String(raw.normalizedQuestion || '');
-            const deck = String(raw.deck || entry.deck || '');
-            const imageOverlap = currentImages.filter(src => entryImages.includes(src)).length;
-            const fileOverlap = currentFiles.filter(file => entryFiles.includes(file)).length;
-            const questionPrefix = currentQuestion && normalizedQuestion ? commonPrefixLength(currentQuestion, normalizedQuestion) : 0;
-            const deckMatch = currentDeck && deck && currentDeck === deck ? 1 : 0;
-            const score = imageOverlap * 1000 + fileOverlap * 700 + deckMatch * 100 + questionPrefix;
-            return {
-                fingerprint,
-                score,
-                imageOverlap,
-                fileOverlap,
-                deckMatch: !!deckMatch,
-                questionPrefix,
-                cardId: entry.cardId,
-                statsId: entry.statsId,
-                statsIdSource: raw.statsIdSource || '',
-                deck,
-                questionLength: raw.questionLength || 0,
-                normalizedQuestion: normalizedQuestion.slice(0, 120),
-                imageSrcs: entryImages.slice(0, 5),
-                imageCandidateFiles: entryFiles.slice(0, 5)
-            };
-        }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
-    }
-
-    function commonPrefixLength(a, b) {
-        const min = Math.min(String(a || '').length, String(b || '').length);
-        let i = 0;
-        while(i < min && a[i] === b[i]) i++;
-        return i;
-    }
-
-    function matchRestoredFirebaseStatsToCurrentCards(context = 'firebase-restore', cardIdentityMap = {}, legacyImageStatsMap = {}) {
-        const stats = getStatsStore();
-        const identityMap = parseJSONSafe(cardIdentityMap, {});
-        const imageStatsMap = normalizeLegacyImageStatsMap(parseJSONSafe(legacyImageStatsMap, legacyImageStatsMap || {}));
-        const firstMappedStatsId = Object.values(identityMap || {})
-            .map(entry => normalizeCardIdentityEntry(entry).statsId)
-            .find(id => id);
-        logStatsLookupDebug(`${context}:before-match`, stats, firstMappedStatsId || '');
-        const cards = collectRestoreMatchCards();
-        let matchedCount = 0;
-        let copiedCount = 0;
-        let copiedByFingerprintCount = 0;
-        let copiedByUniqueImageCount = 0;
-        let unsafeImageMatchesSkipped = 0;
-        let duplicatedStatsIdAssignments = 0;
-        const assignedStatsIds = new Map();
-        const failedExamples = [];
-        const matchedExamples = [];
-
-        cards.forEach(card => {
-            const fingerprint = getStableFingerprintForCard(card, card.deck || currentDeckName || '');
-            const mappedEntry = normalizeCardIdentityEntry(fingerprint && identityMap ? identityMap[fingerprint] : null);
-            const mappedStatsId = mappedEntry.statsId || '';
-            const mappedCardId = mappedEntry.cardId || '';
-            const imageMapped = findLegacyImageMappedStatsForCard(card, stats, imageStatsMap);
-            const exactFingerprintMatch = !!(mappedEntry.rawEntry && mappedEntry.cardId && String(mappedEntry.cardId) === String(card.id) && isRealNumericStatsId(mappedStatsId, stats));
-            const hasMappedEntry = !!mappedEntry.rawEntry;
-            const candidates = hasMappedEntry
-                ? [...new Set([mappedStatsId, imageMapped.imageMappedStatsId, ...mappedEntry.candidateIds, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))]
-                : [...new Set([imageMapped.imageMappedStatsId, ...getCardStatsCandidates(card, stats)].filter(Boolean).map(String))];
-            const candidateStatsHits = candidates.filter(id => isRealNumericStatsId(id, stats));
-            let matchReason = '';
-            const imageDeckMatch = !!(imageMapped.imageMappedStatsId && mappedEntry.rawEntry && mappedEntry.rawEntry.deck && card.deck && String(mappedEntry.rawEntry.deck) === String(card.deck));
-            const matchedId = exactFingerprintMatch
-                ? mappedStatsId
-                : (imageDeckMatch && isRealNumericStatsId(imageMapped.imageMappedStatsId, stats) ? imageMapped.imageMappedStatsId : '');
-            if(exactFingerprintMatch) matchReason = 'fingerprint';
-            else if(imageDeckMatch && matchedId) matchReason = 'unique-image-deck';
-            else if(imageMapped.imageMappedStatsId) unsafeImageMatchesSkipped++;
-            if(matchedId) {
-                const assignedTo = assignedStatsIds.get(matchedId);
-                if(assignedTo && assignedTo !== String(card.id) && matchReason !== 'fingerprint') {
-                    unsafeImageMatchesSkipped++;
-                    duplicatedStatsIdAssignments++;
-                    return;
-                }
-                assignedStatsIds.set(matchedId, String(card.id));
-                matchedCount++;
-                const currentStats = stats[String(card.id)];
-                const sourceStats = stats[matchedId];
-                const shouldRelink = String(card.id) !== String(matchedId)
-                    && sourceStats
-                    && (!currentStats || ((Number(currentStats.total) || 0) === 0 && (Number(sourceStats.total) || 0) > 0));
-                if(shouldRelink) {
-                    stats[String(card.id)] = cloneStatsForDirectMatch(sourceStats);
-                    stats[String(card.id)]._relinkedFromStatsId = String(matchedId);
-                    stats[String(card.id)]._relinkedBy = matchReason;
-                    copiedCount++;
-                    if(matchReason === 'fingerprint') copiedByFingerprintCount++;
-                    if(matchReason === 'unique-image-deck') copiedByUniqueImageCount++;
-                }
-                if(matchedExamples.length < 5) {
-                    matchedExamples.push({ cardId: String(card.id), matchedId: String(matchedId), matchReason, fingerprint, mappedCardId, mappedStatsId, mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'), isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats), candidateStatsHits, imageMapped, mappedEntry: mappedEntry.rawEntry || null, total: Number(stats[matchedId].total) || 0 });
-                }
-            } else if(failedExamples.length < 5) {
-                failedExamples.push({
-                    cardId: String(card.id),
-                    fingerprint,
-                    mappedCardId,
-                    mappedStatsId,
-                    mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
-                    isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
-                    candidateStatsHits,
-                    imageMapped,
-                    mappedStatsExists: !!(mappedStatsId && stats[mappedStatsId]),
-                    mappedEntry: mappedEntry.rawEntry || null,
-                    q: String(card.q || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 80),
-                    candidates: candidates.slice(0, 8)
-                });
-            }
-        });
-
-        if(copiedCount > 0) {
-            setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
-            isDataChanged = true;
-        }
-
-        const result = {
-            context,
-            totalCards: cards.length,
-            statsKeyCount: Object.keys(stats).length,
-            cardIdentityMapCount: Object.keys(identityMap || {}).length,
-            legacyImageStatsMapSize: Object.keys(imageStatsMap || {}).length,
-            matchedCount,
-            copiedCount,
-            copiedByFingerprintCount,
-            copiedByUniqueImageCount,
-            unsafeImageMatchesSkipped,
-            duplicatedStatsIdAssignments,
-            matchedExamples,
-            failedExamples
-        };
-        lastRecoveryPollutionDiagnostics = { ...lastRecoveryPollutionDiagnostics, copiedByFingerprintCount, copiedByUniqueImageCount, unsafeImageMatchesSkipped, duplicatedStatsIdAssignments };
-        console.log('[Yoki Firebase Real Match]', result);
-        return result;
-    }
-    function getUuidMigrationBackupKeys() {
-        const keys = [];
-        try {
-            for(let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if(key && key.startsWith('uuid_migration_backup_')) keys.push(key);
-            }
-        } catch(e) {}
-        return keys.sort();
-    }
-
-    function collectIdLikeValues(source, stats, output = new Set(), depth = 0) {
-        if(depth > 8 || source === null || source === undefined) return output;
-        if(typeof source === 'string' || typeof source === 'number') {
-            const value = String(source).trim();
-            if(value && stats[value]) output.add(value);
-            return output;
-        }
-        if(Array.isArray(source)) {
-            source.forEach(item => collectIdLikeValues(item, stats, output, depth + 1));
-            return output;
-        }
-        if(typeof source === 'object') {
-            const preferredKeys = ['oldId', 'oldID', 'oldUuid', 'oldUUID', 'legacyId', 'legacyID', 'legacyUuid', 'uuid', 'id', 'cardId', 'cardID', 'newId', 'newUuid'];
-            preferredKeys.forEach(key => {
-                if(Object.prototype.hasOwnProperty.call(source, key)) collectIdLikeValues(source[key], stats, output, depth + 1);
-            });
-            Object.values(source).forEach(value => collectIdLikeValues(value, stats, output, depth + 1));
-        }
-        return output;
-    }
-
-    function collectImageMatchesFromObject(source, imageSrcs, stats, matches, meta = {}, depth = 0) {
-        if(depth > 8 || source === null || source === undefined) return;
-        if(typeof source !== 'object') return;
-        let serialized = '';
-        try { serialized = JSON.stringify(source); } catch(e) { serialized = ''; }
-        const matchedImage = imageSrcs.find(src => src && serialized.includes(src));
-        if(matchedImage) {
-            const ids = [...collectIdLikeValues(source, stats)];
-            ids.forEach(id => matches.push({
-                ...meta,
-                imageSrc: matchedImage,
-                statsId: id,
-                total: Number(stats[id] && stats[id].total) || 0,
-                historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0
-            }));
-        }
-        if(Array.isArray(source)) {
-            source.forEach((item, index) => collectImageMatchesFromObject(item, imageSrcs, stats, matches, { ...meta, index }, depth + 1));
-        } else {
-            Object.entries(source).forEach(([key, value]) => collectImageMatchesFromObject(value, imageSrcs, stats, matches, { ...meta, field: key }, depth + 1));
-        }
-    }
-
-    function findImageStatsMatchForCard(card, stats = getStatsStore()) {
-        const imageSrcs = getImageSrcCandidatesForCard(card);
-        const migrationBackupKeys = getUuidMigrationBackupKeys();
-        const matches = [];
-        if(!card || !imageSrcs.length) {
-            return { imageSrcs, migrationBackupKeys, imageMatchStatsId: '', imageMatchFound: false, matches };
-        }
-
-        const scanLibraryObject = (libraryObject, source) => Object.entries(libraryObject || {}).forEach(([deckName, cards]) => {
-            if(!Array.isArray(cards)) return;
-            cards.forEach(candidateCard => {
-                const serialized = `${candidateCard.q || ''}\n${candidateCard.a || ''}`;
-                const matchedImage = imageSrcs.find(src => src && serialized.includes(src));
-                if(matchedImage) {
-                    getCardStatsCandidates(candidateCard, stats).filter(id => stats[id]).forEach(id => {
-                        matches.push({ source, deck: candidateCard.deck || deckName, imageSrc: matchedImage, statsId: id, total: Number(stats[id].total) || 0, historyLength: Array.isArray(stats[id].history) ? stats[id].history.length : 0 });
-                    });
-                }
-            });
-        });
-        scanLibraryObject(library, 'library');
-        [
-            ['storage-library-effective', getStorageItem(STORAGE_KEY_LIBRARY)],
-            ['storage-library-yoki', localStorage.getItem('yoki_final_library')],
-            ['storage-library-legacy', localStorage.getItem('anki_final_library')]
-        ].forEach(([source, rawLibrary]) => {
-            const parsedLibrary = parseJSONSafe(rawLibrary, null);
-            if(parsedLibrary) scanLibraryObject(parsedLibrary, source);
-        });
-
-        migrationBackupKeys.forEach(key => {
-            const parsed = parseJSONSafe(localStorage.getItem(key), null);
-            if(parsed) collectImageMatchesFromObject(parsed, imageSrcs, stats, matches, { source: 'uuid_migration_backup', key });
-        });
-
-        const uniqueMatches = [];
-        const seen = new Set();
-        matches.forEach(match => {
-            const id = String(match.statsId || '');
-            if(!id || seen.has(id)) return;
-            seen.add(id);
-            uniqueMatches.push(match);
-        });
-        uniqueMatches.sort((a, b) => {
-            if((b.historyLength || 0) !== (a.historyLength || 0)) return (b.historyLength || 0) - (a.historyLength || 0);
-            return (b.total || 0) - (a.total || 0);
-        });
-        return {
-            imageSrcs,
-            migrationBackupKeys,
-            imageMatchStatsId: uniqueMatches[0] ? String(uniqueMatches[0].statsId) : '',
-            imageMatchFound: !!uniqueMatches[0],
-            matches: uniqueMatches.slice(0, 20)
-        };
-    }
-
     function getStats(cardOrId) {
         const stats = getStatsStore();
         const card = cardOrId && typeof cardOrId === 'object' ? cardOrId : findCardById(cardOrId);
-        let matchedId = resolveStatsIdForCard(card || cardOrId, stats);
-        const exactFingerprintStatsId = card ? getExactFingerprintStatsIdForCard(card, stats, lastFirebaseCardIdentityMap) : '';
-        if(exactFingerprintStatsId) matchedId = exactFingerprintStatsId;
-        const imageMatch = null;
-        const legacyImageMapped = null;
+        const matchedId = resolveStatsIdForCard(card || cardOrId, stats);
         const matchedStats = matchedId && stats[matchedId] ? stats[matchedId] : null;
-
-        if(card && matchedStats && exactFingerprintStatsId && String(card.id || '') && String(card.id) !== String(matchedId) && !stats[String(card.id)]) {
-            try {
-                stats[String(card.id)] = cloneStatsForDirectMatch(matchedStats);
-                stats[String(card.id)]._relinkedFromStatsId = String(matchedId);
-                stats[String(card.id)]._relinkedBy = 'fingerprint';
-                setStorageItem(STORAGE_KEY_STATS, JSON.stringify(stats));
-                console.log('[Yoki Mobile ID Match Relink]', { cardId: String(card.id), matchedStatsId: String(matchedId), imageMatch, legacyImageMapped, candidates: getCardStatsCandidates(card, stats) });
-            } catch(e) {
-                console.error('[Yoki Mobile ID Match Relink Error]', e);
-            }
-        }
-
         return matchedStats || {correct:0, total:0};
     }
 
@@ -4724,183 +3729,6 @@
         } catch(e) {
             console.error('[Yoki Restore Stats Match Error]', e);
         }
-    }
-    function getRecoveryDiagnostics() {
-        const stats = getStatsStore();
-        const statsKeys = Object.keys(stats || {});
-        const card = activeDeck[currentIndex] || null;
-        const candidates = card ? getCardStatsCandidates(card, stats) : [];
-        const matchedStatsId = candidates.find(id => stats[id]) || '';
-        const currentFingerprint = card ? getStableFingerprintForCard(card, card.deck || currentDeckName || '') : '';
-        const cardIdentityMap = lastFirebaseCardIdentityMap || {};
-        const mappedEntry = normalizeCardIdentityEntry(currentFingerprint && cardIdentityMap ? cardIdentityMap[currentFingerprint] : null);
-        const mappedCardId = mappedEntry.cardId || '';
-        const mappedStatsId = mappedEntry.statsId || '';
-        const fingerprintExistsInBackup = !!(currentFingerprint && cardIdentityMap && cardIdentityMap[currentFingerprint]);
-        const fingerprintMatchedCardId = mappedCardId;
-        const fingerprintMatchedStatsId = mappedStatsId;
-        const fingerprintSimilarityTop5 = card ? getFingerprintSimilarityMatches(card, cardIdentityMap) : [];
-        const mappedStatsLookupDebug = getStatsLookupDebug(stats, mappedStatsId);
-        console.log('[Yoki Current Mapped Stats Lookup]', mappedStatsLookupDebug);
-        const mappedEntryCandidateStatus = mappedEntry.candidateIds.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 }));
-        const mappedEntryExistingCandidateIds = mappedEntryCandidateStatus.filter(item => item.exists).map(item => item.id);
-        const candidateStatsHits = [...new Set([...mappedEntry.candidateIds, ...candidates].filter(id => isRealNumericStatsId(id, stats)).map(String))];
-        const currentExistingCandidateIds = candidates.filter(id => stats[id]);
-        const legacyImageMapped = card ? findLegacyImageMappedStatsForCard(card, stats, lastLegacyImageStatsMap) : { matchedImageFile: '', imageMappedStatsId: '', imageMappedStatsExists: false };
-        const legacyImageMapStatus = card ? getLegacyImageMapStatusForCard(card, lastLegacyImageStatsMap, lastLegacyImageStatsMapDiagnostics) : { currentImageInLegacyMap: false, currentImageSkippedReason: 'no-card', currentPasteImages: [] };
-        const questionText = card ? String(card.q || '') : '';
-        const plainQuestion = questionText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        const questionNeedle = plainQuestion.slice(0, 30).toLowerCase();
-        const currentDeck = currentDeckName || (card && card.deck) || '';
-        const statsEntries = Object.entries(stats || {});
-        const imageMatch = card ? findImageStatsMatchForCard(card, stats) : { imageSrcs: [], migrationBackupKeys: [], imageMatchStatsId: '', imageMatchFound: false, matches: [] };
-        const randomMappedStatsCheck = Object.entries(cardIdentityMap || {})
-            .slice(0, 20)
-            .map(([fp, entry]) => ({
-                fingerprint: fp,
-                statsId: entry && entry.statsId,
-                exists: !!(entry && entry.statsId && stats[entry.statsId])
-            }));
-        const textSearchMatches = statsEntries
-            .filter(([id, stat]) => {
-                const text = JSON.stringify(stat || '').toLowerCase();
-                return questionNeedle && text.includes(questionNeedle);
-            })
-            .slice(0, 20)
-            .map(([id, stat]) => ({ id, total: Number(stat && stat.total) || 0, historyLength: Array.isArray(stat && stat.history) ? stat.history.length : 0 }));
-        const deckSearchMatches = statsEntries
-            .filter(([id, stat]) => {
-                const text = JSON.stringify(stat || '').toLowerCase();
-                return currentDeck && text.includes(String(currentDeck).toLowerCase());
-            })
-            .slice(0, 20)
-            .map(([id, stat]) => ({ id, total: Number(stat && stat.total) || 0, historyLength: Array.isArray(stat && stat.history) ? stat.history.length : 0 }));
-        return {
-            statsKeyCount: statsKeys.length,
-            statsSampleKeys: statsKeys.slice(0, 50),
-            statsSample100: statsKeys.slice(0, 100),
-            has770226654355025: !!stats["770226654355025"],
-            hasYoki12s42vs5jg3: !!stats["yoki_12s42vs5jg3"],
-            randomMappedStatsCheck,
-            randomMappedExistsCount: randomMappedStatsCheck.filter(x => x.exists).length,
-            yokiKeyCount: statsKeys.filter(key => String(key).startsWith('yoki_')).length,
-            numericKeyCount: statsKeys.filter(key => /^[0-9]+$/.test(String(key))).length,
-            cardIdentityMapExists: !!(cardIdentityMap && Object.keys(cardIdentityMap).length),
-            cardIdentityMapSize: Object.keys(cardIdentityMap || {}).length,
-            cardIdentityMapSource: lastFirebaseCardIdentityMapSource || '',
-            backupStatsKeyCount: lastCardIdentityMapDiagnostics.backupStatsKeyCount || 0,
-            backupStatsSample20: lastCardIdentityMapDiagnostics.backupStatsSample20 || [],
-            restoredStatsKeyCount: lastCardIdentityMapDiagnostics.restoredStatsKeyCount || statsKeys.length,
-            restoredStatsSample20: lastCardIdentityMapDiagnostics.restoredStatsSample20 || statsKeys.slice(0, 20),
-            legacyLibraryExists: !!lastCardIdentityMapDiagnostics.legacyLibraryExists,
-            legacyLibraryCardCount: lastCardIdentityMapDiagnostics.legacyLibraryCardCount || 0,
-            legacyFingerprintMatches: lastCardIdentityMapDiagnostics.legacyFingerprintMatches || 0,
-            entriesWithRealStatsId: lastCardIdentityMapDiagnostics.entriesWithRealStatsId || 0,
-            invalidStatsIdCount: lastCardIdentityMapDiagnostics.invalidStatsIdCount || 0,
-            sampleInvalidStatsIds: lastCardIdentityMapDiagnostics.sampleInvalidStatsIds || [],
-            legacyImageStatsMapSize: Object.keys(lastLegacyImageStatsMap || {}).length,
-            rawImageKeyCount: lastLegacyImageStatsMapDiagnostics.rawImageKeyCount || 0,
-            uniquePasteImageKeyCount: lastLegacyImageStatsMapDiagnostics.uniquePasteImageKeyCount || 0,
-            duplicateImageKeyCount: lastLegacyImageStatsMapDiagnostics.duplicateImageKeyCount || 0,
-            duplicatedStatsIdAssignments: lastRecoveryPollutionDiagnostics.duplicatedStatsIdAssignments || 0,
-            sharedStatsObjectRefCount: 0,
-            unsafeImageMatchesSkipped: lastRecoveryPollutionDiagnostics.unsafeImageMatchesSkipped || 0,
-            copiedByFingerprintCount: lastRecoveryPollutionDiagnostics.copiedByFingerprintCount || 0,
-            copiedByUniqueImageCount: lastRecoveryPollutionDiagnostics.copiedByUniqueImageCount || 0,
-            cleanedUnsafeStatsCount: lastRecoveryPollutionDiagnostics.cleanedUnsafeStatsCount || 0,
-            deletedPollutedCurrentStatsCount: lastRecoveryPollutionDiagnostics.deletedPollutedCurrentStatsCount || 0,
-            preservedLegacyStatsCount: lastRecoveryPollutionDiagnostics.preservedLegacyStatsCount || 0,
-            duplicateStatsGroupsFound: lastRecoveryPollutionDiagnostics.duplicateStatsGroupsFound || 0,
-            sampleDeletedIds: lastRecoveryPollutionDiagnostics.sampleDeletedIds || [],
-            manualCleanup: lastRecoveryPollutionDiagnostics.manualCleanup || null,
-            skippedCommonImageKeyCount: lastLegacyImageStatsMapDiagnostics.skippedCommonImageKeyCount || 0,
-            candidateEntryCount: lastLegacyImageStatsMapDiagnostics.candidateEntryCount || 0,
-            numericStatsEntryCount: lastLegacyImageStatsMapDiagnostics.numericStatsEntryCount || 0,
-            imageMapInsertCount: lastLegacyImageStatsMapDiagnostics.imageMapInsertCount || 0,
-            currentImageInLegacyMap: !!legacyImageMapStatus.currentImageInLegacyMap,
-            currentImageSkippedReason: legacyImageMapStatus.currentImageSkippedReason || '',
-            currentPasteImages: legacyImageMapStatus.currentPasteImages || [],
-            matchedImageFile: legacyImageMapped.matchedImageFile || '',
-            imageMappedStatsId: legacyImageMapped.imageMappedStatsId || '',
-            imageMappedStatsExists: !!legacyImageMapped.imageMappedStatsExists,
-            legacyImageStatsMapYokiValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapYokiValueCount || 0,
-            legacyImageStatsMapRealStatsValueCount: lastLegacyImageStatsMapDiagnostics.legacyImageStatsMapRealStatsValueCount || 0,
-            currentFingerprint,
-            fingerprintExistsInBackup,
-            fingerprintMatchedCardId,
-            fingerprintMatchedStatsId,
-            fingerprintSimilarityTop5,
-            mappedCardId,
-            mappedStatsId,
-            mappedStatsIdType: /^[0-9]+$/.test(String(mappedStatsId || '')) ? 'numeric' : (mappedStatsId ? 'non-numeric' : 'empty'),
-            isNumericStatsId: isRealNumericStatsId(mappedStatsId, stats),
-            candidateStatsHits,
-            mappedStatsExists: hasStatsKey(stats, mappedStatsId),
-            mappedStatsLookupDebug,
-            mappedStatsTotal: hasStatsKey(stats, mappedStatsId) ? (Number(stats[mappedStatsId].total) || 0) : 0,
-            mappedEntry: mappedEntry.rawEntry || null,
-            mappedEntryCandidateStatus,
-            mappedEntryExistingCandidateIds,
-            cardIdentityMapSample: Object.entries(cardIdentityMap || {}).slice(0, 5).map(([fingerprint, entry]) => ({
-                fingerprint,
-                entry: {
-                    ...entry,
-                    statsIdExists: !!(entry && entry.statsId && hasStatsKey(stats, entry.statsId))
-                }
-            })),
-            currentDeckName: currentDeckName || '',
-            currentIndex: activeDeck.length ? `${currentIndex + 1}/${activeDeck.length}` : '0/0',
-            currentCardId: card ? String(card.id) : '',
-            matchedStatsId,
-            matchedTotal: hasStatsKey(stats, matchedStatsId) ? (Number(stats[matchedStatsId].total) || 0) : 0,
-            matchedHistoryLength: hasStatsKey(stats, matchedStatsId) && Array.isArray(stats[matchedStatsId].history) ? stats[matchedStatsId].history.length : 0,
-            candidateIds: candidates,
-            currentExistingCandidateIds,
-            candidateStatus: candidates.map(id => ({ id, exists: !!stats[id], total: stats[id] ? (Number(stats[id].total) || 0) : 0, historyLength: stats[id] && Array.isArray(stats[id].history) ? stats[id].history.length : 0 })),
-            questionPreview: plainQuestion.slice(0, 100),
-            questionPreview120: plainQuestion.slice(0, 120),
-            questionLength: questionText.length,
-            normalizedQuestion: normalizeCardTextForId(card ? card.q : '').replace(/<[^>]*>/g, ' ').slice(0, 180),
-            resolveCardIdDebug: card ? getResolveCardIdDebug(card.q, stats) : null,
-            imageSrc: imageMatch.imageSrcs && imageMatch.imageSrcs[0] ? imageMatch.imageSrcs[0] : '',
-            imageSrcs: imageMatch.imageSrcs,
-            migrationBackupKeys: imageMatch.migrationBackupKeys,
-            imageMatchStatsId: imageMatch.imageMatchStatsId,
-            imageMatchFound: imageMatch.imageMatchFound,
-            imageMatchCandidates: imageMatch.matches,
-            textSearch: {
-                needle: questionNeedle,
-                matches: textSearchMatches
-            },
-            deckSearch: {
-                deck: currentDeck,
-                matches: deckSearchMatches
-            }
-        };
-    }
-    function openRecoveryDiagnostics() {
-        const diag = getRecoveryDiagnostics();
-        console.log('[Yoki Recovery Diagnostics]', diag);
-        let modal = document.getElementById('recovery-diagnostics-modal');
-        if(!modal) {
-            modal = document.createElement('div');
-            modal.id = 'recovery-diagnostics-modal';
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <h3 style="margin-top:0; color:var(--text);">🧪 복구 진단</h3>
-                    <pre id="recovery-diagnostics-body" style="white-space:pre-wrap; word-break:break-all; max-height:55vh; overflow:auto; background:var(--input-bg); padding:12px; border-radius:8px; font-size:0.78rem; line-height:1.45;"></pre>
-                    <div class="modal-btns">
-                        <button class="modal-btn btn-cancel" onclick="document.getElementById('recovery-diagnostics-modal').style.display='none'">닫기</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-        document.getElementById('recovery-diagnostics-body').textContent = JSON.stringify(diag, null, 2);
-        modal.style.display = 'flex';
-        document.getElementById('sidebar').classList.remove('open');
-        document.querySelector('.sidebar-overlay').classList.remove('open');
     }
     function toggleTag(e, type) { e.stopPropagation(); const card = activeDeck[currentIndex]; const data = getStatsStore(); const id = resolveStatsIdForCard(card, data); if(!data[id]) data[id] = { correct: 0, total: 0 }; data[id][type] = !data[id][type]; data[id].updatedAt = Date.now(); setStorageItem(STORAGE_KEY_STATS, JSON.stringify(data)); markLocalDataUpdated(data[id].updatedAt); updateIconsUI(data[id]); scheduleBackup(); }
     function updateIconsUI(s) { ['mem','cmp','fav','num','date','pen'].forEach(t => document.getElementById(`${t}-btn`).classList.toggle('active', !!s[t])); }
@@ -4927,24 +3755,6 @@
         closeEditModal(); showCard(); scheduleBackup(); 
     }
     
-    function exportYokiIdTxt() {
-        const rows = [];
-        Object.keys(library).sort().forEach(deckName => {
-            (library[deckName] || []).forEach(card => {
-                rows.push([card.id, deckName, card.q, card.a].map(escapeTsvCell).join('\t'));
-            });
-        });
-        if(!rows.length) { showToast('내보낼 카드가 없습니다.', 'error'); return; }
-        const d = new Date();
-        const fileName = `yoki_id_cards_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.txt`;
-        const blob = new Blob([rows.join('\n')], { type: 'text/plain;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        showToast('Yoki ID 포함 txt를 내보냈습니다.', 'success');
-    }
     function getYokiLocalBackupData() {
         const data = { appId: 'yoki', exportedAt: Date.now(), appVersion: APP_VERSION };
         for(let i = 0; i < localStorage.length; i++) {
