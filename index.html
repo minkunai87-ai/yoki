@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.37 - 카드 수정 버튼 제거)</title>
+<title>Yoki (v11.18.38 - 다중 필터)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -239,7 +239,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.37 - 카드 수정 버튼 제거)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.38 - 다중 필터)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -330,7 +330,7 @@
             <div class="filter-chip" id="filter-fav" onclick="setFilterMode('fav')">⭐ 중요</div>
             <div class="filter-chip" id="filter-num" onclick="setFilterMode('num')">🔢 숫자</div>
             <div class="filter-chip" id="filter-date" onclick="setFilterMode('date')">📅 날짜</div>
-            <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 벌칙</div>
+            <div class="filter-chip" id="filter-pen" onclick="setFilterMode('pen')">🚨 긴급</div>
         </div>
     </div>
 
@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.37 - 카드 수정 버튼 제거';
+    const APP_VERSION = 'v11.18.38 - 다중 필터';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -599,7 +599,41 @@
             legacyKb: getStorageSizeKb(localStorage.getItem(LEGACY_STORAGE_KEYS[key]) || '')
         }));
     }
-    const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 벌칙', 'none': '보조 없음', 'original': '🔄 원래순', 'unlearned': '🆕 미학습순', 'wrong': '🔥 오답순', 'number': '🔢 번호순', 'oldest': '📅 오래된순', 'recent': '🕘 최근순' };
+    const modeNames = { 'default': '📋 전체', 'due': '🎯 오늘 복습', 'mem': '🧠 암기', 'cmp': '🆚 비교', 'fav': '⭐ 중요', 'num': '🔢 숫자', 'date': '📅 날짜', 'pen': '🚨 긴급', 'none': '보조 없음', 'original': '🔄 원래순', 'unlearned': '🆕 미학습순', 'wrong': '🔥 오답순', 'number': '🔢 번호순', 'oldest': '📅 오래된순', 'recent': '🕘 최근순' };
+    const filterModes = ['due', 'mem', 'cmp', 'fav', 'num', 'date', 'pen'];
+
+    function normalizeFilterModes(value) {
+        if(Array.isArray(value)) return value.filter(mode => filterModes.includes(mode));
+        if(value && typeof value === 'object' && Array.isArray(value.filters)) return normalizeFilterModes(value.filters);
+        if(typeof value === 'string') {
+            const trimmed = value.trim();
+            if(!trimmed || trimmed === 'default') return [];
+            if(trimmed.startsWith('[')) {
+                try { return normalizeFilterModes(JSON.parse(trimmed)); } catch(e) {}
+            }
+            return trimmed.split(/[,+|]/).map(mode => mode.trim()).filter(mode => filterModes.includes(mode));
+        }
+        return [];
+    }
+
+    function getActiveFilterModes() {
+        return normalizeFilterModes(currentFilterMode);
+    }
+
+    function getFilterStateForStorage(value = currentFilterMode) {
+        const modes = normalizeFilterModes(value);
+        return modes.length ? modes : 'default';
+    }
+
+    function getFilterKey(value = currentFilterMode) {
+        const modes = normalizeFilterModes(value);
+        return modes.length ? modes.join('+') : 'default';
+    }
+
+    function getFilterLabel(value = currentFilterMode) {
+        const modes = normalizeFilterModes(value);
+        return modes.length ? modes.map(mode => modeNames[mode] || mode).join(' + ') : modeNames.default;
+    }
     const gradeHistoryLabels = { 0: '모름', 1: '애매', 2: '맞음', 3: '확인' };
     const gradeHistoryPoints = { 0: 0, 1: 0.5, 2: 1, 3: null };
 
@@ -2046,7 +2080,7 @@
         const nextItem = {
             deck,
             deckMode: getCurrentDeckModeForRecent(deck),
-            filter: currentFilterMode,
+            filter: getFilterStateForStorage(),
             sort: currentSortMode,
             secondarySort: currentSecondarySortMode
         };
@@ -2066,7 +2100,7 @@
     function openRecentDeck(index) {
         const item = parseRecentDecks()[index];
         if (!item || !item.deck) return;
-        currentFilterMode = item.filter || 'default';
+        currentFilterMode = getFilterStateForStorage(item.filter);
         currentSortMode = item.sort || 'original';
         currentSecondarySortMode = item.secondarySort || 'none';
         saveFilterState();
@@ -2100,8 +2134,8 @@
         const last = (savedViewState && savedViewState.deck) || getStorageItem(STORAGE_KEY_LAST_DECK);
         const lastMode = (savedViewState && savedViewState.deckMode) || getStorageItem(STORAGE_KEY_LAST_DECK_MODE);
         const savedFilter = JSON.parse(getStorageItem(STORAGE_KEY_FILTER_STATE) || '{}');
-        if(savedViewState.filter) currentFilterMode = savedViewState.filter;
-        else if(savedFilter.filter) currentFilterMode = savedFilter.filter;
+        if(savedViewState.filter) currentFilterMode = getFilterStateForStorage(savedViewState.filter);
+        else if(savedFilter.filter) currentFilterMode = getFilterStateForStorage(savedFilter.filter);
         if(savedViewState.sort) currentSortMode = savedViewState.sort;
         else if(savedFilter.sort) currentSortMode = savedFilter.sort;
         if(savedViewState.secondarySort) currentSecondarySortMode = savedViewState.secondarySort;
@@ -2145,7 +2179,7 @@
     }
 
     function applyStartupViewState(viewState = {}, fallbackDeck = '') {
-        if(viewState.filter) currentFilterMode = viewState.filter;
+        if(viewState.filter) currentFilterMode = getFilterStateForStorage(viewState.filter);
         if(viewState.sort) currentSortMode = viewState.sort;
         if(viewState.secondarySort) currentSecondarySortMode = viewState.secondarySort;
         if(typeof viewState.searchQuery === 'string') {
@@ -2286,14 +2320,15 @@
         }
         let filtered = [...originalDeck];
         
-        if(currentFilterMode !== 'default') {
-            if (currentFilterMode === 'due') {
-                const today = new Date(); 
-                today.setHours(0,0,0,0);
-                filtered = filtered.filter(c => { const s = findStatsForCard(c, stats); return s && s.dueDate && s.dueDate <= today.getTime(); });
-            } else {
-                filtered = filtered.filter(c => (findStatsForCard(c, stats) || {})[currentFilterMode]);
-            }
+        const selectedFilters = getActiveFilterModes();
+        if(selectedFilters.length) {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            filtered = filtered.filter(c => selectedFilters.every(mode => {
+                const s = findStatsForCard(c, stats) || {};
+                if(mode === 'due') return s.dueDate && s.dueDate <= today.getTime();
+                return !!s[mode];
+            }));
         }
         if(isRestore) {
             const targetCardId = getStartupTargetCardId(getStartupViewState());
@@ -2364,9 +2399,17 @@
 
     function updateFilterStatusUI() {
         const secondaryText = currentSecondarySortMode && currentSecondarySortMode !== 'none' ? ` + ${modeNames[currentSecondarySortMode]}` : '';
-        document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'}${secondaryText} & ${modeNames[currentFilterMode] || '📋 전체'}`;
+        document.getElementById('filter-status-text').innerText = `${modeNames[currentSortMode] || '🔄 원래순'}${secondaryText} & ${getFilterLabel()}`;
     }
-    function setFilterMode(mode) { currentFilterMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
+    function setFilterMode(mode) {
+        if(mode === 'default') {
+            currentFilterMode = 'default';
+        } else {
+            const modes = getActiveFilterModes();
+            currentFilterMode = modes.includes(mode) ? modes.filter(item => item !== mode) : [...modes, mode];
+        }
+        saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true);
+    }
     function setSortMode(mode) { currentSortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
     function setSecondarySortMode(mode) { currentSecondarySortMode = mode; saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); }
     
@@ -2377,11 +2420,16 @@
         saveFilterState(); highlightFilter(); applyFilterAndSort(false); persistCurrentViewState(true); 
     }
     
-    function saveFilterState() { setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode, secondarySort: currentSecondarySortMode })); }
+    function saveFilterState() { setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(), sort: currentSortMode, secondarySort: currentSecondarySortMode })); }
     function highlightFilter() {
         document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-        const filterChip = document.getElementById(`filter-${currentFilterMode}`);
-        if(filterChip) filterChip.classList.add('active');
+        const activeFilters = getActiveFilterModes();
+        const defaultChip = document.getElementById('filter-default');
+        if(defaultChip) defaultChip.classList.toggle('active', activeFilters.length === 0);
+        activeFilters.forEach(mode => {
+            const filterChip = document.getElementById(`filter-${mode}`);
+            if(filterChip) filterChip.classList.add('active');
+        });
         const primarySelect = document.getElementById('sort-primary-select');
         const secondarySelect = document.getElementById('sort-secondary-select');
         if(primarySelect) primarySelect.value = currentSortMode;
@@ -2756,7 +2804,7 @@
     }
 
     function getProgressKey() {
-        return `${currentDeckName}__${currentFilterMode}__${currentSortMode}__${currentSecondarySortMode}`;
+        return `${currentDeckName}__${getFilterKey()}__${currentSortMode}__${currentSecondarySortMode}`;
     }
 
     function getCurrentCardId() {
@@ -2773,7 +2821,7 @@
             selectedDeckPath: selectedDeckName,
             selectedDeckType,
             viewMode: selectedDeckType === 'group' ? 'parentDeckView' : 'subDeckView',
-            filter: currentFilterMode,
+            filter: getFilterStateForStorage(),
             sort: currentSortMode,
             secondarySort: currentSecondarySortMode,
             index: currentIndex,
@@ -2824,7 +2872,7 @@
     function restoreDeckViewState(deck) {
         const state = getDeckViewStates()[deck];
         if(!state) return;
-        currentFilterMode = state.filter || 'default';
+        currentFilterMode = getFilterStateForStorage(state.filter);
         currentSortMode = state.sort || 'original';
         currentSecondarySortMode = state.secondarySort || 'none';
         if(typeof state.searchQuery === 'string') {
@@ -3062,7 +3110,7 @@
             currentCardIndex: Number.isFinite(Number(viewState.currentCardIndex ?? viewState.index)) ? Number(viewState.currentCardIndex ?? viewState.index) : (Number.isFinite(Number(currentIndex)) ? currentIndex : 0),
             currentCardIndexInSelectedDeck: Number.isFinite(Number(viewState.currentCardIndexInSelectedDeck ?? viewState.index)) ? Number(viewState.currentCardIndexInSelectedDeck ?? viewState.index) : (Number.isFinite(Number(currentIndex)) ? currentIndex : 0),
             index: Number.isFinite(Number(viewState.index ?? viewState.currentCardIndex)) ? Number(viewState.index ?? viewState.currentCardIndex) : (Number.isFinite(Number(currentIndex)) ? currentIndex : 0),
-            filter: viewState.filter || currentFilterMode || 'default',
+            filter: getFilterStateForStorage(viewState.filter || currentFilterMode),
             sort: viewState.sort || currentSortMode || 'original',
             secondarySort: viewState.secondarySort || currentSecondarySortMode || 'none',
             searchQuery: typeof viewState.searchQuery === 'string' ? viewState.searchQuery : (getStorageItem(STORAGE_KEY_SEARCH_QUERY) || ''),
@@ -3106,13 +3154,14 @@
             if(viewState.deckMode) setItemSafe(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
             if(viewState.currentCardUuid) setItemSafe(STORAGE_KEY_CURRENT_CARD_ID, viewState.currentCardUuid);
             if(typeof viewState.searchQuery === 'string') setItemSafe(STORAGE_KEY_SEARCH_QUERY, viewState.searchQuery);
-            setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter, sort: viewState.sort, secondarySort: viewState.secondarySort }));
+            setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(viewState.filter), sort: viewState.sort, secondarySort: viewState.secondarySort }));
             setItemSafe(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
             removeStorageItem(STORAGE_KEY_ACTIVE_IDS);
             const progress = parseJSONSafe(getStorageItem(STORAGE_KEY_PROGRESS), {});
             if(viewState.selectedDeckPath) {
-                progress[`${viewState.selectedDeckPath}__${viewState.filter}__${viewState.sort}__${viewState.secondarySort}`] = viewState.index;
-                progress[`${viewState.selectedDeckPath}__${viewState.filter}__${viewState.sort}`] = viewState.index;
+                const filterKey = getFilterKey(viewState.filter);
+                progress[`${viewState.selectedDeckPath}__${filterKey}__${viewState.sort}__${viewState.secondarySort}`] = viewState.index;
+                progress[`${viewState.selectedDeckPath}__${filterKey}__${viewState.sort}`] = viewState.index;
                 setItemSafe(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
             }
             markLocalDataUpdated(viewState.updatedAt);
@@ -3219,7 +3268,7 @@
         if(state.selectedDeckPath) setItemSafe(STORAGE_KEY_LAST_DECK, state.selectedDeckPath);
         if(state.deckMode) setItemSafe(STORAGE_KEY_LAST_DECK_MODE, state.deckMode);
         if(state.currentCardUuid) setItemSafe(STORAGE_KEY_CURRENT_CARD_ID, state.currentCardUuid);
-        setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: state.filter, sort: state.sort, secondarySort: state.secondarySort }));
+        setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(state.filter), sort: state.sort, secondarySort: state.secondarySort }));
         if(typeof state.searchQuery === 'string') setItemSafe(STORAGE_KEY_SEARCH_QUERY, state.searchQuery);
         setItemSafe(STORAGE_KEY_VIEW_STATE, JSON.stringify(state));
         removeStorageItem(STORAGE_KEY_ACTIVE_IDS);
@@ -3248,7 +3297,7 @@
             selectedDeckPath: selectedDeck,
             selectedDeckType: selectedType,
             viewMode: data.viewMode || viewState.viewMode || (selectedType === 'group' ? 'parentDeckView' : 'subDeckView'),
-            filter: data.currentFilterMode || viewState.filter || filterState.filter || 'default',
+            filter: getFilterStateForStorage(data.currentFilterMode || viewState.filter || filterState.filter),
             sort: data.currentSortMode || viewState.sort || filterState.sort || 'original',
             secondarySort: viewState.secondarySort || filterState.secondarySort || 'none',
             index: selectedIndex,
@@ -3411,14 +3460,15 @@
         const filterState = parseJSONSafe(data && data.filter, {});
         const activeIds = parseJSONSafe(data && data.activeIds, []);
         const deck = (data && (data.currentDeckName || data.currentDeck)) || viewState.currentDeckName || viewState.deck || (data && data.lastDeck) || '';
-        const filter = viewState.filter || filterState.filter || 'default';
+        const filter = getFilterStateForStorage(viewState.filter || filterState.filter);
+        const filterKey = getFilterKey(filter);
         const sort = viewState.sort || filterState.sort || 'original';
         const secondarySort = viewState.secondarySort || filterState.secondarySort || 'none';
         let index = Number.isFinite(Number(viewState.index)) ? Number(viewState.index) : 0;
 
         if(deck && data && data.progress) {
             const progress = parseJSONSafe(data.progress, {});
-            const progressIndex = progress[`${deck}__${filter}__${sort}__${secondarySort}`] ?? progress[`${deck}__${filter}__${sort}`];
+            const progressIndex = progress[`${deck}__${filterKey}__${sort}__${secondarySort}`] ?? progress[`${deck}__${filterKey}__${sort}`];
             if(Number.isFinite(Number(progressIndex))) index = Number(progressIndex);
         }
 
@@ -3516,7 +3566,7 @@
         if(!snapshotOriginalDeck.length && !snapshotCards.length) return false;
 
         currentDeckName = resolvedViewState.deck;
-        currentFilterMode = viewState.filter || 'default';
+        currentFilterMode = getFilterStateForStorage(viewState.filter);
         currentSortMode = viewState.sort || 'original';
         currentSecondarySortMode = viewState.secondarySort || 'none';
         originalDeck = snapshotOriginalDeck.length ? snapshotOriginalDeck : snapshotCards;
@@ -3531,7 +3581,7 @@
         const inferredMode = inferDeckModeForSnapshot(resolvedViewState);
         setStorageItem(STORAGE_KEY_LAST_DECK, currentDeckName);
         setStorageItem(STORAGE_KEY_LAST_DECK_MODE, inferredMode);
-        setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: currentFilterMode, sort: currentSortMode, secondarySort: currentSecondarySortMode }));
+        setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(), sort: currentSortMode, secondarySort: currentSecondarySortMode }));
         removeStorageItem(STORAGE_KEY_ACTIVE_IDS);
 
         const targetCardId = viewState.cardId ? String(viewState.cardId) : '';
@@ -3566,7 +3616,7 @@
             if(!viewState || typeof viewState !== 'object') return;
             if(viewState.deck) setStorageItem(STORAGE_KEY_LAST_DECK, viewState.deck);
             if(viewState.deckMode) setStorageItem(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
-            if(viewState.filter || viewState.sort) setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter || 'default', sort: viewState.sort || 'original', secondarySort: viewState.secondarySort || 'none' }));
+            if(viewState.filter || viewState.sort) setStorageItem(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(viewState.filter), sort: viewState.sort || 'original', secondarySort: viewState.secondarySort || 'none' }));
             removeStorageItem(STORAGE_KEY_ACTIVE_IDS);
             if(viewState.cardId) setStorageItem(STORAGE_KEY_CURRENT_CARD_ID, String(viewState.cardId));
             if(typeof viewState.searchQuery === 'string') setStorageItem(STORAGE_KEY_SEARCH_QUERY, viewState.searchQuery);
@@ -3574,13 +3624,14 @@
             setItemSafe(STORAGE_KEY_VIEW_STATE, JSON.stringify(storageViewState));
 
             const deck = viewState.deck || '';
-            const filter = viewState.filter || 'default';
+            const filter = getFilterStateForStorage(viewState.filter);
+            const filterKey = getFilterKey(filter);
             const sort = viewState.sort || 'original';
             if(deck) {
                 const progress = JSON.parse(getStorageItem(STORAGE_KEY_PROGRESS) || '{}');
                 const secondarySort = viewState.secondarySort || 'none';
-                progress[`${deck}__${filter}__${sort}__${secondarySort}`] = Number(viewState.index) || 0;
-                progress[`${deck}__${filter}__${sort}`] = Number(viewState.index) || 0;
+                progress[`${deck}__${filterKey}__${sort}__${secondarySort}`] = Number(viewState.index) || 0;
+                progress[`${deck}__${filterKey}__${sort}`] = Number(viewState.index) || 0;
                 setStorageItem(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
             }
         } catch(e) {}
@@ -3594,7 +3645,7 @@
         setItemSafe(STORAGE_KEY_PROGRESS, JSON.stringify(progress));
         setItemSafe(STORAGE_KEY_LAST_DECK, viewState.deck);
         setItemSafe(STORAGE_KEY_LAST_DECK_MODE, viewState.deckMode);
-        setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: viewState.filter, sort: viewState.sort, secondarySort: viewState.secondarySort }));
+        setItemSafe(STORAGE_KEY_FILTER_STATE, JSON.stringify({ filter: getFilterStateForStorage(viewState.filter), sort: viewState.sort, secondarySort: viewState.secondarySort }));
         setItemSafe(STORAGE_KEY_CURRENT_CARD_ID, viewState.cardId);
         setItemSafe(STORAGE_KEY_SEARCH_QUERY, viewState.searchQuery);
         setItemSafe(STORAGE_KEY_VIEW_STATE, JSON.stringify(viewState));
@@ -3625,7 +3676,7 @@
     
     function loadProgress() {
         const progress = JSON.parse(getStorageItem(STORAGE_KEY_PROGRESS) || '{}');
-        return progress[getProgressKey()] ?? progress[`${currentDeckName}__${currentFilterMode}__${currentSortMode}`] ?? 0;
+        return progress[getProgressKey()] ?? progress[`${currentDeckName}__${getFilterKey()}__${currentSortMode}`] ?? 0;
     }
     function getStatsStore() {
         if(inMemoryStatsStore && typeof inMemoryStatsStore === 'object' && Object.keys(inMemoryStatsStore).length) return inMemoryStatsStore;
