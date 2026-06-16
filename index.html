@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.42 - 수동복구경로 연결)</title>
+<title>Yoki (v11.18.43 - 시작복원 예외복구)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -239,7 +239,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.42 - 수동복구경로 연결)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.43 - 시작복원 예외복구)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.42 - 수동복구경로 연결';
+    const APP_VERSION = 'v11.18.43 - 시작복원 예외복구';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -465,6 +465,7 @@
     // 로컬 스토리지 키 정리
     const STORAGE_KEY_LIBRARY = 'yoki_final_library';
     const STORAGE_KEY_STATS = 'yoki_final_stats';
+    const STORAGE_KEY_REVIEW_HISTORY = 'yoki_review_history_v1';
     const STORAGE_KEY_PROGRESS = 'yoki_final_progress_v2';
     const STORAGE_KEY_LAST_DECK = 'yoki_final_last_deck';
     const STORAGE_KEY_LAST_DECK_MODE = 'yoki_final_last_deck_mode';
