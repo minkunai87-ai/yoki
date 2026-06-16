@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.41 - 자동백업 복구)</title>
+<title>Yoki (v11.18.42 - 수동복구경로 연결)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -239,7 +239,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.41 - 자동백업 복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.42 - 수동복구경로 연결)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.41 - 자동백업 복구';
+    const APP_VERSION = 'v11.18.42 - 수동복구경로 연결';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -3422,12 +3422,12 @@
         try {
             console.log('AUTO_SYNC_START');
             const localState = loadLocalStudyState();
-            const cloudState = await loadCloudStudyState();
+            const latest = await getLatestYokiBackupIndexRecord();
             const localUpdatedAt = Number(localState && localState.updatedAt) || 0;
-            const cloudUpdatedAt = Number(cloudState && cloudState.updatedAt) || 0;
+            const cloudUpdatedAt = Number(latest && latest.index && (latest.index.localUpdatedAt || latest.index.timestamp || latest.index.createdAt)) || Number(latest && latest.ts) || 0;
             console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
             console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
-            if (!cloudState || !cloudState.timestamp) {
+            if (!latest || !latest.ts) {
                 restorePosition(localState.viewState || {}, 'local');
                 logStudyStateSnapshot('auto-sync-local', localState);
                 console.log('AUTO_SYNC_SOURCE local');
@@ -3436,7 +3436,7 @@
                 return;
             }
             console.log('AUTO_SYNC_SOURCE cloud');
-            await restoreFromFirebase(cloudState.timestamp, true, cloudState.path || FIREBASE_BACKUP_PATH);
+            await restoreFromFirebase(latest.ts, true, latest.path || FIREBASE_BACKUP_PATH);
             const syncAppliedAt = Date.now();
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(syncAppliedAt));
             console.log('AUTO_SYNC_APPLIED', true);
