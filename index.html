@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.38 - 다중 필터)</title>
+<title>Yoki (v11.18.39 - 크로스OS복원안정화)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -239,7 +239,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.38 - 다중 필터)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.39 - 크로스OS복원안정화)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.38 - 다중 필터';
+    const APP_VERSION = 'v11.18.39 - 크로스OS복원안정화';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1266,6 +1266,7 @@
             throw new Error(`Firebase ${res.status} ${errorText || res.statusText || 'backup failed'}`);
         } catch(e) {
             console.error('[Yoki Backup Error]', e);
+            console.log('BACKUP_WRITE_SUCCESS', false);
             updateCloudIcon('error');
             if(!isAuto) showToast(`❌ 백업 실패: ${e && e.message ? e.message : e}`, "error");
             return false;
@@ -2699,7 +2700,7 @@
         setItemSafe(STORAGE_KEY_STATS, JSON.stringify(data));
         saveStatsToIndexedDBFallback(data);
         markLocalDataUpdated(data[id].updatedAt);
-        saveStudyState('review', { backup: false });
+        saveStudyState('review', { backup: true });
         updateStatsUI(data[id]);
         renderRateHistory(data[id]);
         console.log('REVIEW_SAVED', {
@@ -2712,7 +2713,6 @@
         if(score === 3) {
             revealAnswer();
             console.log('NEXT_CARD_SUCCESS', { skipped: true, reason: 'confirm', currentIndex, currentCardUuid: getCurrentCardId() });
-            setTimeout(backupReviewNow, 0);
             return;
         }
         console.log('NEXT_CARD_START', { fromIndex: currentIndex, activeDeckLength: activeDeck.length });
@@ -2724,7 +2724,6 @@
             moveCard(0);
             console.log('NEXT_CARD_SUCCESS', { completed: true, currentIndex, currentCardUuid: getCurrentCardId() });
         }
-        setTimeout(backupReviewNow, 0);
     }
 
     function getVirtualDate(ts) { const d = new Date(ts); if(d.getHours() < 4) d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d; }
@@ -2908,6 +2907,11 @@
 
     function logYokiStorageEnvironment(stage) {
         console.log('[Yoki Storage Environment]', stage, getYokiStorageEnvironment());
+    }
+
+    function getStorageMode() {
+        if(inMemoryStatsStore && typeof inMemoryStatsStore === 'object' && Object.keys(inMemoryStatsStore).length) return 'memory+indexedDB';
+        return typeof indexedDB !== 'undefined' ? 'localStorage+indexedDB' : 'localStorage';
     }
 
     function openYokiIndexedDB() {
@@ -3135,6 +3139,7 @@
         const stat = getCurrentStudyStat(stats) || {};
         console.log('APP_VERSION', APP_VERSION);
         console.log('ENV', getStudyEnvironment());
+        console.log('STORAGE_MODE', getStorageMode());
         console.log('SELECTED_DECK', currentDeckName || getStorageItem(STORAGE_KEY_LAST_DECK) || '');
         console.log('CURRENT_CARD_UUID', getCurrentCardId() || getStorageItem(STORAGE_KEY_CURRENT_CARD_ID) || '');
         console.log('CURRENT_CARD_INDEX', Number.isFinite(Number(currentIndex)) ? currentIndex : 0);
@@ -3257,6 +3262,9 @@
 
     function restorePosition(viewState = {}, source = 'restore') {
         const state = compactStudyViewState(viewState);
+        console.log('RESTORE_SELECTED_DECK', state.selectedDeckPath || state.deck || '');
+        console.log('RESTORE_CARD_UUID', state.currentCardUuid || state.cardId || '');
+        console.log('RESTORE_CARD_INDEX', Number(state.index) || 0);
         console.log('RESTORE_POSITION', {
             source,
             selectedDeckPath: state.selectedDeckPath,
@@ -3412,45 +3420,33 @@
     async function syncLatestFirebaseBackupOnStartup() {
         try {
             console.log('AUTO_SYNC_START');
-            const latest = await getLatestYokiBackupIndexRecord();
-            if (!latest || !latest.ts) {
-                console.log('AUTO_SYNC_SOURCE local');
-                console.log('AUTO_SYNC_APPLIED', false);
-                console.log('AUTO_SYNC_COMPLETE');
-                return;
-            }
-            const localUpdatedAt = getLocalDataUpdatedAt();
-            const indexUpdatedAt = getBackupUpdatedAt(latest.index, latest.ts);
-            const lastAutoSyncAt = Number(getStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT)) || 0;
-            if (indexUpdatedAt <= localUpdatedAt || indexUpdatedAt <= lastAutoSyncAt) {
-                console.log('AUTO_SYNC_SOURCE local');
-                console.log('AUTO_SYNC_APPLIED', false);
-                console.log('AUTO_SYNC_COMPLETE');
-                return;
-            }
-            const res = await fetch(`${FIREBASE_DB_URL}${latest.path}/${latest.ts}.json?_t=${Date.now()}`, { cache: 'no-store' });
-            if (!res.ok) return;
-            const data = await res.json();
-            if (!isYokiBackupRecord(data, latest.path)) return;
-            const cloudUpdatedAt = getBackupUpdatedAt(data, latest.ts);
-            console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
+            const localState = loadLocalStudyState();
+            const cloudState = await loadCloudStudyState();
+            const localUpdatedAt = Number(localState && localState.updatedAt) || 0;
+            const cloudUpdatedAt = Number(cloudState && cloudState.updatedAt) || 0;
             console.log(`LOCAL_UPDATED_AT ${localUpdatedAt}`);
-            if (cloudUpdatedAt <= localUpdatedAt || cloudUpdatedAt <= lastAutoSyncAt) {
+            console.log(`CLOUD_UPDATED_AT ${cloudUpdatedAt}`);
+            if (!cloudState || cloudUpdatedAt <= localUpdatedAt) {
+                restorePosition(localState.viewState || {}, 'local');
+                logStudyStateSnapshot('auto-sync-local', localState);
                 console.log('AUTO_SYNC_SOURCE local');
                 console.log('AUTO_SYNC_APPLIED', false);
                 console.log('AUTO_SYNC_COMPLETE');
                 return;
             }
             console.log('AUTO_SYNC_SOURCE cloud');
-            await restoreFromFirebase(latest.ts, true, latest.path);
-            setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(cloudUpdatedAt));
-            markLocalDataUpdated(Math.max(localUpdatedAt, cloudUpdatedAt));
+            applyRestoredState(cloudState, 'cloud');
+            const syncAppliedAt = Date.now();
+            setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(syncAppliedAt));
+            markLocalDataUpdated(syncAppliedAt);
             console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
+            logStudyStateSnapshot('auto-sync-cloud', cloudState);
             showToast('최신 클라우드 데이터 동기화 완료', 'success');
         } catch(e) {
             console.error('[Yoki Auto Cloud Sync Error]', e);
             console.log('AUTO_SYNC_SOURCE local');
+            console.log('AUTO_SYNC_APPLIED', false);
             console.log('AUTO_SYNC_COMPLETE');
         }
     }
