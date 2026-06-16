@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.39 - 크로스OS복원안정화';
+    const APP_VERSION = 'v11.18.40 - 최신성 비교 수정';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -3254,7 +3254,7 @@
         if(hasBackupField(raw, 'searchQuery')) setItemSafe(STORAGE_KEY_SEARCH_QUERY, raw.searchQuery);
         const restoredViewState = restorePosition(payload.viewState || getBackupViewState(raw), source);
         const restoredUpdatedAt = Number(payload.updatedAt) || getLocalDataUpdatedAt();
-        if(restoredUpdatedAt) markLocalDataUpdated(Math.max(getLocalDataUpdatedAt(), restoredUpdatedAt));
+        if(restoredUpdatedAt) markLocalDataUpdated(source === 'cloud' ? restoredUpdatedAt : Math.max(getLocalDataUpdatedAt(), restoredUpdatedAt));
         logStudyStateSnapshot('restore', { stats, reviewHistory, viewState: restoredViewState });
         console.log('RESTORE_COMPLETE', { source, currentCardUuid: restoredViewState.currentCardUuid || restoredViewState.cardId || '' });
         return restoredViewState;
@@ -3438,7 +3438,8 @@
             applyRestoredState(cloudState, 'cloud');
             const syncAppliedAt = Date.now();
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(syncAppliedAt));
-            markLocalDataUpdated(syncAppliedAt);
+            initApp();
+            if(activeDeck && activeDeck.length) showCard();
             console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
             logStudyStateSnapshot('auto-sync-cloud', cloudState);
