@@ -2326,7 +2326,7 @@
         if(selectedFilters.length) {
             const today = new Date();
             today.setHours(0,0,0,0);
-            filtered = filtered.filter(c => selectedFilters.every(mode => {
+            filtered = filtered.filter(c => selectedFilters.some(mode => {
                 const s = findStatsForCard(c, stats) || {};
                 if(mode === 'due') return s.dueDate && s.dueDate <= today.getTime();
                 return !!s[mode];
