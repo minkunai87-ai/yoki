@@ -3875,7 +3875,7 @@
             setStorageItem(STORAGE_KEY_LAST_AUTO_CLOUD_SYNC_AT, String(syncAppliedAt));
             console.log('AUTO_SYNC_APPLIED', true);
             console.log('AUTO_SYNC_COMPLETE');
-            logStudyStateSnapshot('auto-sync-cloud', cloudState);
+            logStudyStateSnapshot('auto-sync-cloud', loadLocalStudyState());
             showToast('최신 클라우드 데이터 동기화 완료', 'success');
         } catch(e) {
             console.error('[Yoki Auto Cloud Sync Error]', e);
