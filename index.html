@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Yoki (v11.18.43 - 시작복원 예외복구)</title>
+<title>Yoki (v11.18.44 - 백업 안전복구)</title>
 <style>
     /* 기본 테마 유지 */
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -239,7 +239,7 @@
             
             <button class="btn-refresh" onclick="location.reload()">🔄 사이트 새로고침</button>
         </div>
-        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.43 - 시작복원 예외복구)</div>
+        <div style="margin-top:auto; font-size:0.8rem; color:var(--text-sub); text-align:center;" id="app-version-label">Yoki (v11.18.44 - 백업 안전복구)</div>
     </div>
 
     <div class="modal-overlay" id="tr-modal">
@@ -449,7 +449,7 @@
     </div>
 
 <script>
-    const APP_VERSION = 'v11.18.43 - 시작복원 예외복구';
+    const APP_VERSION = 'v11.18.44 - 백업 안전복구';
     const repoOwner = 'minkunai87-ai', repoName = 'yoki'; 
     const githubRawBase = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/images/`;
     let library = {}, currentDeckName = null, originalDeck = [], activeDeck = [], currentIndex = 0;
@@ -1190,6 +1190,27 @@
             persistCurrentViewState(false);
             const metadata = getBackupMetadata();
             const backupStats = getStatsStore();
+            const backupStatsCount = Object.keys(backupStats || {}).length;
+            let largestCloudStatsCount = 0;
+            try {
+                const guardRes = await fetch(`${FIREBASE_DB_URL}${FIREBASE_BACKUP_INDEX_PATH}.json?_t=${Date.now()}`, { cache: 'no-store' });
+                if (guardRes.ok) {
+                    const guardIndex = await guardRes.json();
+                    largestCloudStatsCount = Math.max(0, ...Object.values(guardIndex || {}).map(item => Number(item && item.statsKeyCount) || 0));
+                }
+            } catch (guardError) {
+                console.warn('[Yoki Backup Safety Guard Lookup Failed]', guardError);
+            }
+            const isEmptySnapshot = backupStatsCount === 0;
+            const isRapidDrop = largestCloudStatsCount >= 100
+                && backupStatsCount < largestCloudStatsCount * 0.5
+                && largestCloudStatsCount - backupStatsCount >= 100;
+            if (isEmptySnapshot || isRapidDrop) {
+                console.error('[Yoki Backup Safety Guard Blocked]', { backupStatsCount, largestCloudStatsCount });
+                updateCloudIcon('error');
+                if (!isAuto) showToast('⚠️ 카드 수 급감이 감지되어 백업을 차단했습니다.', 'error');
+                return false;
+            }
             const currentCardUuid = getCurrentCardId();
             const data = { 
                 appId: 'yoki',
